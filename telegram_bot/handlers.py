@@ -342,6 +342,7 @@ async def admin_manage_user_id(message: Message, state: FSMContext):
     platform = data["admin_platform"]
     user_id = int(raw)
     from config import owner_ids
+    from .keyboards import admin_management_keyboard
     if user_id in owner_ids(platform):
         await state.clear()
         return await message.answer("⛔ Владельца удалить нельзя.", reply_markup=admin_management_keyboard())
