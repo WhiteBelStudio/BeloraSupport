@@ -23,7 +23,7 @@ async def _prepare_vk_group(bot) -> int | None:
         logger.info("🔎 Raw VK getById response: %r", groups)
         response = groups.get("response", groups)
         if isinstance(response, dict):
-            items = response.get("items") or []
+            items = response.get("groups") or response.get("items") or []
             group = items[0] if items else response
         elif isinstance(response, list):
             group = response[0] if response else {}
