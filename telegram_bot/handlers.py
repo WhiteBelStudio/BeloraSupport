@@ -28,9 +28,7 @@ class AdminManageForm(StatesGroup):
 @router.message(CommandStart())
 async def start(message: Message, state: FSMContext):
     await state.clear()
-    await message.answer("👋 Добро пожаловать в фан-клуб!
-
-Здесь можно подать заявку на вступление.", reply_markup=main_keyboard())
+    await message.answer("👋 Добро пожаловать в фан-клуб!\n\nЗдесь можно подать заявку на вступление.", reply_markup=main_keyboard())
 
 @router.callback_query(F.data == "apply")
 async def apply_start(callback: CallbackQuery, state: FSMContext):
@@ -75,15 +73,7 @@ async def form_interests(message: Message, state: FSMContext):
     value=(message.text or "").strip()
     if not 2 <= len(value) <= 1000: return await message.answer("Ответ должен быть от 2 до 1000 символов.")
     await state.update_data(interests=value); data=await state.get_data(); await state.set_state(ApplicationForm.confirm)
-    preview=(f"📋 <b>Предпросмотр заявки</b>
-
-👤 <b>Имя:</b> {data['name']}
-🎂 <b>Возраст:</b> {data['age']}
-📍 <b>Город:</b> {data['city']}
-💬 <b>Почему:</b> {data['reason']}
-⭐ <b>Интересы:</b> {data['interests']}
-
-Всё верно?")
+    preview=(f"📋 <b>Предпросмотр заявки</b>\n\n👤 <b>Имя:</b> {data['name']}\n🎂 <b>Возраст:</b> {data['age']}\n📍 <b>Город:</b> {data['city']}\n💬 <b>Почему:</b> {data['reason']}\n⭐ <b>Интересы:</b> {data['interests']}\n\nВсё верно?")
     await message.answer(preview, reply_markup=confirm_keyboard(), parse_mode="HTML")
 
 @router.callback_query(F.data == "apply_confirm", ApplicationForm.confirm)
@@ -92,16 +82,7 @@ async def apply_confirm(callback: CallbackQuery, state: FSMContext):
     app_id=await create_application("telegram",str(user.id),user.username,data["name"],data["age"],data["city"],data["reason"],data["interests"])
     await state.clear()
     await callback.message.answer(f"✅ Заявка <b>#{app_id}</b> отправлена администраторам.",parse_mode="HTML",reply_markup=main_keyboard())
-    text=(f"🎫 <b>Новая заявка #{app_id}</b>
-
-👤 {data['name']}
-🎂 {data['age']}
-📍 {data['city']}
-💬 {data['reason']}
-⭐ {data['interests']}
-
-Telegram ID: <code>{user.id}</code>
-Username: @{user.username or 'нет'}")
+    text=(f"🎫 <b>Новая заявка #{app_id}</b>\n\n👤 {data['name']}\n🎂 {data['age']}\n📍 {data['city']}\n💬 {data['reason']}\n⭐ {data['interests']}\n\nTelegram ID: <code>{user.id}</code>\nUsername: @{user.username or 'нет'}")
     recipient_ids = set(admin_ids("telegram"))
     recipient_ids.update(int(row["user_id"]) for row in await list_admins("telegram"))
     for admin_id in recipient_ids:
@@ -147,8 +128,7 @@ async def reject_reason(message: Message,state:FSMContext):
     app_id=int((await state.get_data())["reject_app_id"]); app=await get_application(app_id)
     if app and await set_status(app_id,"rejected",reason):
         if app["platform"]=="telegram":
-            try: await message.bot.send_message(int(app["user_id"]),f"❌ Заявка #{app_id} отклонена.
-Причина: {reason}")
+            try: await message.bot.send_message(int(app["user_id"]),f"❌ Заявка #{app_id} отклонена.\nПричина: {reason}")
             except Exception: pass
         await message.answer(f"❌ Заявка #{app_id} отклонена.")
     else: await message.answer("Заявка уже обработана или не найдена.")
@@ -165,9 +145,7 @@ async def add_admin_command(message: Message):
     platform="telegram" if parts[1].lower() in {"tg","telegram"} else "vk"
     user_id=int(parts[2])
     if await add_admin(platform,user_id,message.from_user.id):
-        await message.answer(f"✅ Администратор добавлен.
-Платформа: {platform}
-ID: <code>{user_id}</code>",parse_mode="HTML")
+        await message.answer(f"✅ Администратор добавлен.\nПлатформа: {platform}\nID: <code>{user_id}</code>",parse_mode="HTML")
     else:
         await message.answer("ℹ️ Этот ID уже есть среди администраторов.")
 
@@ -193,32 +171,21 @@ async def admins_command(message: Message):
     tg=await list_admins("telegram")
     vk=await list_admins("vk")
     lines=["👑 <b>Администраторы BeloraSupport</b>","",f"Telegram: {', '.join(r['user_id'] for r in tg) or 'нет'}",f"VK: {', '.join(r['user_id'] for r in vk) or 'нет'}"]
-    await message.answer("
-".join(lines),parse_mode="HTML")
+    await message.answer("\n".join(lines),parse_mode="HTML")
 
 
 # ===== Telegram admin panel =====
 
 def _panel_text(stats: dict[str, int]) -> str:
     return (
-        "🛠 <b>BeloraSupport • Admin Center</b>
-"
-        "━━━━━━━━━━━━━━━━━━
-
-"
-        f"📥 <b>Новые заявки:</b> {stats['pending']}
-"
-        f"📊 <b>Всего заявок:</b> {stats['total']}
-"
-        f"✅ <b>Одобрено:</b> {stats['approved']}
-"
-        f"❌ <b>Отклонено:</b> {stats['rejected']}
-
-"
-        "━━━━━━━━━━━━━━━━━━
-"
-        "<b>Управление</b>
-"
+        "🛠 <b>BeloraSupport • Admin Center</b>\n"
+        "━━━━━━━━━━━━━━━━━━\n\n"
+        f"📥 <b>Новые заявки:</b> {stats['pending']}\n"
+        f"📊 <b>Всего заявок:</b> {stats['total']}\n"
+        f"✅ <b>Одобрено:</b> {stats['approved']}\n"
+        f"❌ <b>Отклонено:</b> {stats['rejected']}\n\n"
+        "━━━━━━━━━━━━━━━━━━\n"
+        "<b>Управление</b>\n"
         "Выбери нужный раздел ниже:"
     )
 
@@ -245,16 +212,10 @@ async def panel_stats(callback: CallbackQuery):
     await callback.answer()
     stats = await application_stats()
     await callback.message.edit_text(
-        "📊 <b>Статистика BeloraSupport</b>
-━━━━━━━━━━━━━━━━━━
-
-"
-        f"📋 Всего: <b>{stats['total']}</b>\
-"
-        f"📥 Ожидают: <b>{stats['pending']}</b>\
-"
-        f"✅ Одобрено: <b>{stats['approved']}</b>\
-"
+        "📊 <b>Статистика BeloraSupport</b>\n━━━━━━━━━━━━━━━━━━\n\n"
+        f"📋 Всего: <b>{stats['total']}</b>\n"
+        f"📥 Ожидают: <b>{stats['pending']}</b>\n"
+        f"✅ Одобрено: <b>{stats['approved']}</b>\n"
         f"❌ Отклонено: <b>{stats['rejected']}</b>",
         parse_mode="HTML",
         reply_markup=admin_panel_keyboard(),
@@ -271,10 +232,7 @@ async def panel_pending(callback: CallbackQuery):
     apps = await list_applications("pending", limit=10, offset=page * 10)
     if not apps:
         return await callback.message.edit_text("📥 <b>Ожидающих заявок нет.</b>", parse_mode="HTML", reply_markup=admin_panel_keyboard())
-    text = f"📥 <b>Заявки на рассмотрении</b>\
-Страница {page + 1}\
-\
-Выбери заявку:"
+    text = f"📥 <b>Заявки на рассмотрении</b>\nСтраница {page + 1}\n\nВыбери заявку:"
     await callback.message.edit_text(text, parse_mode="HTML", reply_markup=admin_list_keyboard(apps, page, total, "panel_pending"))
 
 
@@ -289,10 +247,7 @@ async def panel_all(callback: CallbackQuery):
     if not apps:
         return await callback.message.edit_text("📋 <b>Заявок пока нет.</b>", parse_mode="HTML", reply_markup=admin_panel_keyboard())
     await callback.message.edit_text(
-        f"📋 <b>Все заявки</b>\
-Страница {page + 1}\
-\
-Выбери заявку:",
+        f"📋 <b>Все заявки</b>\nСтраница {page + 1}\n\nВыбери заявку:",
         parse_mode="HTML",
         reply_markup=admin_list_keyboard(apps, page, total, "panel_all"),
     )
@@ -311,30 +266,17 @@ async def panel_application(callback: CallbackQuery):
     username = f"@{html.escape(app['username'])}" if app['username'] else "нет"
     reject_reason = html.escape(app['reject_reason']) if app['reject_reason'] else "—"
     text = (
-        f"🎫 <b>Заявка #{app['id']}</b>\
-\
-"
-        f"👤 <b>Имя:</b> {html.escape(app['name'])}\
-"
-        f"🎂 <b>Возраст:</b> {app['age']}\
-"
-        f"📍 <b>Город:</b> {html.escape(app['city'])}\
-"
-        f"💬 <b>Почему:</b> {html.escape(app['reason'])}\
-"
-        f"⭐ <b>Интересы:</b> {html.escape(app['interests'])}\
-\
-"
-        f"🌐 <b>Платформа:</b> {html.escape(app['platform'])}\
-"
-        f"🆔 <b>User ID:</b> <code>{app['user_id']}</code>\
-"
-        f"👤 <b>Username:</b> {username}\
-"
-        f"📌 <b>Статус:</b> {html.escape(app['status'])}\
-"
-        f"📝 <b>Причина отказа:</b> {reject_reason}\
-"
+        f"🎫 <b>Заявка #{app['id']}</b>\n\n"
+        f"👤 <b>Имя:</b> {html.escape(app['name'])}\n"
+        f"🎂 <b>Возраст:</b> {app['age']}\n"
+        f"📍 <b>Город:</b> {html.escape(app['city'])}\n"
+        f"💬 <b>Почему:</b> {html.escape(app['reason'])}\n"
+        f"⭐ <b>Интересы:</b> {html.escape(app['interests'])}\n\n"
+        f"🌐 <b>Платформа:</b> {html.escape(app['platform'])}\n"
+        f"🆔 <b>User ID:</b> <code>{app['user_id']}</code>\n"
+        f"👤 <b>Username:</b> {username}\n"
+        f"📌 <b>Статус:</b> {html.escape(app['status'])}\n"
+        f"📝 <b>Причина отказа:</b> {reject_reason}\n"
         f"🕒 <b>Создана:</b> {html.escape(app['created_at'])}"
     )
     await callback.message.edit_text(text, parse_mode="HTML", reply_markup=application_admin_keyboard(app_id, app["status"]))
@@ -351,19 +293,11 @@ async def panel_admins(callback: CallbackQuery):
     tg_owner = ", ".join(str(x) for x in owner_ids("telegram")) or "не задан"
     vk_owner = ", ".join(str(x) for x in owner_ids("vk")) or "не задан"
     text = (
-        "👥 <b>Администраторы</b>\
-\
-"
-        f"👑 Telegram-владелец: <code>{tg_owner}</code>\
-"
-        f"👑 VK-владелец: <code>{vk_owner}</code>\
-\
-"
-        f"📱 Telegram: {', '.join(r['user_id'] for r in tg) or 'нет'}\
-"
-        f"💬 VK: {', '.join(r['user_id'] for r in vk) or 'нет'}\
-\
-"
+        "👥 <b>Администраторы</b>\n\n"
+        f"👑 Telegram-владелец: <code>{tg_owner}</code>\n"
+        f"👑 VK-владелец: <code>{vk_owner}</code>\n\n"
+        f"📱 Telegram: {', '.join(r['user_id'] for r in tg) or 'нет'}\n"
+        f"💬 VK: {', '.join(r['user_id'] for r in vk) or 'нет'}\n\n"
         "Добавление/удаление: /addadmin tg ID, /addadmin vk ID, /deladmin tg ID, /deladmin vk ID"
     )
     await callback.message.edit_text(text, parse_mode="HTML", reply_markup=admin_panel_keyboard())
@@ -379,11 +313,7 @@ async def admin_add_start(callback: CallbackQuery, state: FSMContext):
     await callback.answer()
     label = "Telegram" if platform == "telegram" else "VK"
     await callback.message.edit_text(
-        f"➕ <b>Добавление {label}-администратора</b>
-
-Отправь ID пользователя одним сообщением.
-
-⬅️ Для отмены используй /panel.",
+        f"➕ <b>Добавление {label}-администратора</b>\n\nОтправь ID пользователя одним сообщением.\n\n⬅️ Для отмены используй /panel.",
         parse_mode="HTML",
     )
 
@@ -398,11 +328,7 @@ async def admin_del_start(callback: CallbackQuery, state: FSMContext):
     await callback.answer()
     label = "Telegram" if platform == "telegram" else "VK"
     await callback.message.edit_text(
-        f"🗑 <b>Удаление {label}-администратора</b>
-
-Отправь ID пользователя одним сообщением.
-
-⬅️ Для отмены используй /panel.",
+        f"🗑 <b>Удаление {label}-администратора</b>\n\nОтправь ID пользователя одним сообщением.\n\n⬅️ Для отмены используй /panel.",
         parse_mode="HTML",
     )
 
@@ -435,19 +361,11 @@ async def admin_manage_user_id(message: Message, state: FSMContext):
     tg_owner = ", ".join(str(x) for x in owner_ids("telegram")) or "не задан"
     vk_owner = ", ".join(str(x) for x in owner_ids("vk")) or "не задан"
     text = (
-        "👥 <b>Управление администраторами</b>
-
-"
-        f"👑 Telegram-владелец: <code>{tg_owner}</code>
-"
-        f"👑 VK-владелец: <code>{vk_owner}</code>
-
-"
-        f"📱 <b>Telegram:</b> {', '.join(r['user_id'] for r in tg) or 'нет'}
-"
-        f"💬 <b>VK:</b> {', '.join(r['user_id'] for r in vk) or 'нет'}
-
-"
+        "👥 <b>Управление администраторами</b>\n\n"
+        f"👑 Telegram-владелец: <code>{tg_owner}</code>\n"
+        f"👑 VK-владелец: <code>{vk_owner}</code>\n\n"
+        f"📱 <b>Telegram:</b> {', '.join(r['user_id'] for r in tg) or 'нет'}\n"
+        f"💬 <b>VK:</b> {', '.join(r['user_id'] for r in vk) or 'нет'}\n\n"
         f"{result}"
     )
     await message.answer(text, parse_mode="HTML", reply_markup=admin_management_keyboard())
