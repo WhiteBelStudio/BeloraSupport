@@ -66,11 +66,16 @@ async def _prepare_vk_group(bot) -> int | None:
         )
         logger.info("✅ VK Long Poll settings: %s", settings.get("response", settings))
 
-        bot_settings = await bot.api.request(
-            "groups.getSettings",
-            {"group_id": group_id},
-        )
-        logger.info("🔧 VK bot settings after setup: %s", bot_settings.get("response", bot_settings))
+        try:
+            bot_settings = await bot.api.request(
+                "groups.getSettings",
+                {"group_id": group_id},
+            )
+            logger.info("🔧 VK bot settings after setup: %s", bot_settings.get("response", bot_settings))
+        except Exception as exc:
+            # groups.getSettings is not available with group authorization (VK error 27).
+            # This diagnostic call must not mark the whole VK setup as failed.
+            logger.warning("⚠️ VK settings verification unavailable: %s", exc)
         return group_id
     except Exception:
         logger.exception("❌ VK API setup failed; polling will still start")
