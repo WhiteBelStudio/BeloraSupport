@@ -20,6 +20,7 @@ def _main_keyboard() -> str:
         "buttons": [
             [{"action": {"type": "text", "label": "🎫 Подать заявку"}, "color": "primary"}],
             [{"action": {"type": "text", "label": "📋 Моя заявка"}, "color": "secondary"}],
+            [{"action": {"type": "text", "label": "🛠 Админ-панель"}, "color": "secondary"}],
         ],
     }
     return json.dumps(keyboard, ensure_ascii=False)
