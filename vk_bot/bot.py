@@ -1,45 +1,60 @@
 from __future__ import annotations
 
+import json
 import logging
 import os
+import secrets
+
+from database import create_application, get_application, has_pending, list_admins, set_status
+from config import admin_ids, is_admin
 
 logger = logging.getLogger("BeloraSupport.VK")
 
+VK_STATES: dict[str, dict] = {}
 
-def _main_keyboard():
-    # Build the VK keyboard explicitly so its JSON is independent of
-    # VKBottle's keyboard builder and is visible as a persistent bot keyboard.
-    import json
 
+def _main_keyboard() -> str:
+    keyboard = {
+        "one_time": False,
+        "inline": False,
+        "buttons": [
+            [{"action": {"type": "text", "label": "🎫 Подать заявку"}, "color": "primary"}],
+            [{"action": {"type": "text", "label": "📋 Моя заявка"}, "color": "secondary"}],
+        ],
+    }
+    return json.dumps(keyboard, ensure_ascii=False)
+
+
+def _confirm_keyboard() -> str:
+    keyboard = {
+        "one_time": True,
+        "inline": False,
+        "buttons": [
+            [
+                {"action": {"type": "text", "label": "✅ Отправить"}, "color": "positive"},
+                {"action": {"type": "text", "label": "✏️ Заново"}, "color": "secondary"},
+            ],
+            [{"action": {"type": "text", "label": "❌ Отмена"}, "color": "negative"}],
+        ],
+    }
+    return json.dumps(keyboard, ensure_ascii=False)
+
+
+def _admin_keyboard(app_id: int) -> str:
     keyboard = {
         "one_time": False,
         "inline": False,
         "buttons": [
             [
-                {
-                    "action": {
-                        "type": "text",
-                        "label": "🎫 Подать заявку",
-                    },
-                    "color": "primary",
-                }
-            ],
-            [
-                {
-                    "action": {
-                        "type": "text",
-                        "label": "📋 Моя заявка",
-                    },
-                    "color": "secondary",
-                }
-            ],
+                {"action": {"type": "text", "label": f"✅ Одобрить #{app_id}"}, "color": "positive"},
+                {"action": {"type": "text", "label": f"❌ Отклонить #{app_id}"}, "color": "negative"},
+            ]
         ],
     }
     return json.dumps(keyboard, ensure_ascii=False)
 
 
 async def _prepare_vk_group(bot) -> int | None:
-    """Verify VK community identity and Long Poll message events."""
     try:
         groups = await bot.api.request("groups.getById", {"fields": "name,screen_name"})
         response = groups.get("response", groups)
@@ -52,9 +67,7 @@ async def _prepare_vk_group(bot) -> int | None:
             group = {}
 
         group_id = int(group["id"])
-        group_name = group.get("name", "VK community")
-
-        logger.info("🔎 VK community detected: %s (id=%s)", group_name, group_id)
+        logger.info("🔎 VK community detected: %s (id=%s)", group.get("name", "VK community"), group_id)
 
         await bot.api.request(
             "groups.setSettings",
@@ -66,7 +79,6 @@ async def _prepare_vk_group(bot) -> int | None:
                 "bots_add_to_chat": 1,
             },
         )
-
         await bot.api.request(
             "groups.setLongPollSettings",
             {
@@ -80,13 +92,8 @@ async def _prepare_vk_group(bot) -> int | None:
                 "message_deny": 1,
             },
         )
-
-        settings = await bot.api.request(
-            "groups.getLongPollSettings",
-            {"group_id": group_id},
-        )
+        settings = await bot.api.request("groups.getLongPollSettings", {"group_id": group_id})
         logger.info("✅ VK Long Poll settings: %s", settings.get("response", settings))
-
         return group_id
     except Exception:
         logger.exception("❌ VK API setup failed; polling will still start")
@@ -103,53 +110,192 @@ async def run_vk_bot() -> None:
     from vkbottle.bot import Message
 
     bot = Bot(token=token)
-
     await _prepare_vk_group(bot)
 
-    keyboard = _main_keyboard()
-    logger.info("⌨️ VK keyboard prepared: %s", keyboard)
+    main_keyboard = _main_keyboard()
+    logger.info("⌨️ VK keyboard prepared")
 
-    async def _answer(message: Message, text: str) -> None:
+    async def _answer(message: Message, text: str, keyboard: str | None = None) -> None:
         try:
-            await message.answer(text, keyboard=keyboard)
+            await message.answer(text, keyboard=keyboard or main_keyboard)
         except Exception as exc:
-            # VK error 912 means community bot capabilities are disabled.
-            # Keep the bot functional with plain text instead of failing.
             if "912" not in str(exc) and "chat bot feature" not in str(exc).lower():
                 raise
             logger.warning("⚠️ VK keyboard unavailable (API 912); using text fallback")
             await message.answer(text)
 
+    async def _send_vk(peer_id: int, text: str, keyboard: str | None = None) -> None:
+        try:
+            await bot.api.request(
+                "messages.send",
+                {
+                    "peer_id": peer_id,
+                    "random_id": secrets.randbelow(2_000_000_000),
+                    "message": text,
+                    **({"keyboard": keyboard} if keyboard else {}),
+                },
+            )
+        except Exception:
+            logger.exception("❌ Failed to send VK message to peer_id=%s", peer_id)
+
+    async def _send_application_to_admins(app_id: int, data: dict, user_id: int) -> None:
+        text = (
+            f"🎫 Новая заявка #{app_id}\n\n"
+            f"👤 {data['name']}\n"
+            f"🎂 {data['age']}\n"
+            f"📍 {data['city']}\n"
+            f"💬 {data['reason']}\n"
+            f"⭐ {data['interests']}\n\n"
+            f"VK ID: {user_id}"
+        )
+        recipients = set(admin_ids("vk"))
+        recipients.update(int(row["user_id"]) for row in await list_admins("vk"))
+        for admin_id in recipients:
+            await _send_vk(admin_id, text, _admin_keyboard(app_id))
+
+    async def _finish_application(message: Message, data: dict) -> None:
+        user_id = int(message.from_id)
+        app_id = await create_application(
+            "vk",
+            str(user_id),
+            None,
+            data["name"],
+            data["age"],
+            data["city"],
+            data["reason"],
+            data["interests"],
+        )
+        VK_STATES.pop(str(user_id), None)
+        await _answer(
+            message,
+            f"✅ Заявка #{app_id} отправлена администраторам.\n\n"
+            "Теперь дождись решения — мы сообщим результат здесь.",
+            main_keyboard,
+        )
+        await _send_application_to_admins(app_id, data, user_id)
+
     @bot.on.message()
     async def handle(message: Message):
+        user_id = int(getattr(message, "from_id", 0) or 0)
+        text = (message.text or "").strip()
+        normalized = text.lower()
+
         logger.info(
             "📩 VK message received: peer_id=%s from_id=%s text=%r",
             getattr(message, "peer_id", None),
-            getattr(message, "from_id", None),
-            getattr(message, "text", None),
+            user_id,
+            text,
         )
 
-        text = (message.text or "").strip().lower()
-
-        if text in {"/start", "начать", "старт", "🎫 подать заявку"}:
+        if normalized in {"/start", "начать", "старт"}:
+            VK_STATES.pop(str(user_id), None)
             await _answer(
                 message,
                 "👋 Добро пожаловать в фан-клуб!\n\n"
                 "Здесь можно подать заявку на вступление.\n\n"
-                "Нажми кнопку «🎫 Подать заявку», чтобы начать.",
+                "Нажми «🎫 Подать заявку», чтобы начать.",
+                main_keyboard,
             )
             return
 
-        if text == "📋 моя заявка":
-            await _answer(message, "ℹ️ Сейчас активной заявки нет.")
+        if normalized == "🎫 подать заявку":
+            if await has_pending("vk", str(user_id)):
+                await _answer(message, "⏳ У тебя уже есть заявка на рассмотрении.", main_keyboard)
+                return
+            VK_STATES[str(user_id)] = {"step": "name"}
+            await _answer(message, "1/5. Как тебя зовут или как к тебе обращаться?", main_keyboard)
             return
 
-        await _answer(
-            message,
-            "👋 Привет! Я бот BeloraSupport.\n\n"
-            "Выбери действие:",
-        )
+        if normalized == "📋 моя заявка":
+            if await has_pending("vk", str(user_id)):
+                await _answer(message, "⏳ Твоя заявка сейчас находится на рассмотрении.", main_keyboard)
+            else:
+                await _answer(message, "ℹ️ Активной заявки нет.", main_keyboard)
+            return
 
+        state = VK_STATES.get(str(user_id))
+        if not state:
+            await _answer(message, "👋 Привет! Выбери действие:", main_keyboard)
+            return
+
+        step = state["step"]
+
+        if step == "name":
+            if not 2 <= len(text) <= 80:
+                await _answer(message, "Имя/ник должен быть от 2 до 80 символов.", main_keyboard)
+                return
+            state["name"] = text
+            state["step"] = "age"
+            await _answer(message, "2/5. Сколько тебе лет? Введи число.", main_keyboard)
+            return
+
+        if step == "age":
+            try:
+                age = int(text)
+            except ValueError:
+                await _answer(message, "Введи возраст числом.", main_keyboard)
+                return
+            if not 10 <= age <= 100:
+                await _answer(message, "Введи корректный возраст.", main_keyboard)
+                return
+            state["age"] = age
+            state["step"] = "city"
+            await _answer(message, "3/5. Из какого ты города?", main_keyboard)
+            return
+
+        if step == "city":
+            if not 2 <= len(text) <= 100:
+                await _answer(message, "Напиши город.", main_keyboard)
+                return
+            state["city"] = text
+            state["step"] = "reason"
+            await _answer(message, "4/5. Почему хочешь вступить в фан-клуб?", main_keyboard)
+            return
+
+        if step == "reason":
+            if not 5 <= len(text) <= 1000:
+                await _answer(message, "Ответ должен быть от 5 до 1000 символов.", main_keyboard)
+                return
+            state["reason"] = text
+            state["step"] = "interests"
+            await _answer(message, "5/5. Что тебе интересно в фан-клубе?", main_keyboard)
+            return
+
+        if step == "interests":
+            if not 2 <= len(text) <= 1000:
+                await _answer(message, "Ответ должен быть от 2 до 1000 символов.", main_keyboard)
+                return
+            state["interests"] = text
+            state["step"] = "confirm"
+            preview = (
+                "📋 Предпросмотр заявки\n\n"
+                f"👤 Имя: {state['name']}\n"
+                f"🎂 Возраст: {state['age']}\n"
+                f"📍 Город: {state['city']}\n"
+                f"💬 Почему: {state['reason']}\n"
+                f"⭐ Интересы: {state['interests']}\n\n"
+                "Всё верно?"
+            )
+            await _answer(message, preview, _confirm_keyboard())
+            return
+
+        if step == "confirm":
+            if normalized == "✏️ заново":
+                VK_STATES[str(user_id)] = {"step": "name"}
+                await _answer(message, "Начинаем заново. 1/5. Как тебя зовут или как к тебе обращаться?", main_keyboard)
+                return
+            if normalized == "❌ отмена":
+                VK_STATES.pop(str(user_id), None)
+                await _answer(message, "Заявка отменена.", main_keyboard)
+                return
+            if normalized == "✅ отправить":
+                await _finish_application(message, state.copy())
+                return
+            await _answer(message, "Выбери «✅ Отправить», «✏️ Заново» или «❌ Отмена».", _confirm_keyboard())
+            return
+
+        await _answer(message, "Произошла ошибка состояния анкеты. Начни заново кнопкой «🎫 Подать заявку».", main_keyboard)
+        VK_STATES.pop(str(user_id), None)
 
     logger.info("VK bot started; message handler registered")
     await bot.run_polling()
