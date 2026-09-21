@@ -76,6 +76,17 @@ async def run_vk_bot() -> None:
 
     keyboard = _main_keyboard()
 
+    async def _answer(message: Message, text: str) -> None:
+        try:
+            await message.answer(text, keyboard=keyboard)
+        except Exception as exc:
+            # VK error 912 means community bot capabilities are disabled.
+            # Keep the bot functional with plain text instead of failing.
+            if "912" not in str(exc) and "chat bot feature" not in str(exc).lower():
+                raise
+            logger.warning("⚠️ VK keyboard unavailable (API 912); using text fallback")
+            await message.answer(text)
+
     @bot.on.message()
     async def handle(message: Message):
         logger.info(
@@ -88,25 +99,22 @@ async def run_vk_bot() -> None:
         text = (message.text or "").strip().lower()
 
         if text in {"/start", "начать", "старт", "🎫 подать заявку"}:
-            await message.answer(
+            await _answer(
+                message,
                 "👋 Добро пожаловать в фан-клуб!\n\n"
                 "Здесь можно подать заявку на вступление.\n\n"
                 "Нажми кнопку «🎫 Подать заявку», чтобы начать.",
-                keyboard=keyboard,
             )
             return
 
         if text == "📋 моя заявка":
-            await message.answer(
-                "ℹ️ Сейчас активной заявки нет.",
-                keyboard=keyboard,
-            )
+            await _answer(message, "ℹ️ Сейчас активной заявки нет.")
             return
 
-        await message.answer(
+        await _answer(
+            message,
             "👋 Привет! Я бот BeloraSupport.\n\n"
             "Выбери действие:",
-            keyboard=keyboard,
         )
 
 
