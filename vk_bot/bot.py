@@ -5,7 +5,7 @@ import logging
 import os
 import secrets
 
-from database import create_application, get_application, has_pending, list_admins, set_status
+from database import application_stats, count_applications, create_application, get_application, has_pending, list_admins, list_applications, set_status
 from config import admin_ids, is_admin
 
 logger = logging.getLogger("BeloraSupport.VK")
@@ -138,6 +138,37 @@ async def run_vk_bot() -> None:
         except Exception:
             logger.exception("❌ Failed to send VK message to peer_id=%s", peer_id)
 
+    def _admin_panel_keyboard() -> str:
+        keyboard = {"one_time": False, "inline": False, "buttons": [
+            [{"action": {"type": "text", "label": "📥 Ожидают"}, "color": "primary"}],
+            [{"action": {"type": "text", "label": "📋 Все заявки"}, "color": "secondary"}],
+            [{"action": {"type": "text", "label": "📊 Статистика"}, "color": "secondary"}],
+            [{"action": {"type": "text", "label": "👥 Администраторы"}, "color": "secondary"}],
+            [{"action": {"type": "text", "label": "🏠 Главное меню"}, "color": "secondary"}],
+        ]}
+        return json.dumps(keyboard, ensure_ascii=False)
+
+    def _admin_list_keyboard(apps, page: int, total: int, status_prefix: str) -> str:
+        buttons = [[{"action": {"type": "text", "label": f"#{row['id']} • {row['name']} • {row['status']}"}, "color": "secondary"}] for row in apps]
+        nav = []
+        if page > 0:
+            nav.append({"action": {"type": "text", "label": "⬅️ Предыдущая"}, "color": "secondary"})
+        if (page + 1) * 10 < total:
+            nav.append({"action": {"type": "text", "label": "➡️ Следующая"}, "color": "secondary"})
+        if nav: buttons.append(nav)
+        buttons.append([{ "action": {"type": "text", "label": "🏠 Панель"}, "color": "secondary" }])
+        return json.dumps({"one_time": False, "inline": False, "buttons": buttons}, ensure_ascii=False)
+
+    def _application_keyboard(app_id: int, status: str) -> str:
+        buttons = []
+        if status == "pending":
+            buttons.append([
+                {"action": {"type": "text", "label": f"✅ Одобрить #{app_id}"}, "color": "positive"},
+                {"action": {"type": "text", "label": f"❌ Отклонить #{app_id}"}, "color": "negative"},
+            ])
+        buttons.append([{ "action": {"type": "text", "label": "🏠 Панель"}, "color": "secondary" }])
+        return json.dumps({"one_time": False, "inline": False, "buttons": buttons}, ensure_ascii=False)
+
     async def _send_application_to_admins(app_id: int, data: dict, user_id: int) -> None:
         text = (
             f"🎫 Новая заявка #{app_id}\n\n"
@@ -196,6 +227,93 @@ async def run_vk_bot() -> None:
                 "Нажми «🎫 Подать заявку», чтобы начать.",
                 main_keyboard,
             )
+            return
+
+        if normalized == "🛠 админ-панель":
+            if not is_admin("vk", user_id):
+                await _answer(message, "⛔ Доступ только для администраторов.", main_keyboard)
+                return
+            stats = await application_stats()
+            await _answer(message, f"🛠 АДМИН-ПАНЕЛЬ\\n\\n📥 Ожидают: {stats['pending']}\\n✅ Одобрено: {stats['approved']}\\n❌ Отклонено: {stats['rejected']}\\n📊 Всего: {stats['total']}\\n\\nВыбери раздел:", _admin_panel_keyboard())
+            return
+
+        if normalized in {"📊 статистика", "статистика"} and is_admin("vk", user_id):
+            stats = await application_stats()
+            await _answer(message, f"📊 СТАТИСТИКА\\n\\n📋 Всего: {stats['total']}\\n📥 Ожидают: {stats['pending']}\\n✅ Одобрено: {stats['approved']}\\n❌ Отклонено: {stats['rejected']}", _admin_panel_keyboard())
+            return
+
+        if normalized in {"📥 ожидают", "ожидают"} and is_admin("vk", user_id):
+            apps = await list_applications("pending", limit=10, offset=0)
+            total = await count_applications("pending")
+            await _answer(message, "📥 Ожидающих заявок нет." if not apps else "📥 ЗАЯВКИ НА РАССМОТРЕНИИ\\n\\nВыбери заявку:", _admin_panel_keyboard() if not apps else _admin_list_keyboard(apps, 0, total, "pending"))
+            return
+
+        if normalized in {"📋 все заявки", "все заявки"} and is_admin("vk", user_id):
+            apps = await list_applications(limit=10, offset=0)
+            total = await count_applications()
+            await _answer(message, "📋 Заявок пока нет." if not apps else "📋 ВСЕ ЗАЯВКИ\\n\\nВыбери заявку:", _admin_panel_keyboard() if not apps else _admin_list_keyboard(apps, 0, total, "all"))
+            return
+
+        if normalized in {"👥 администраторы", "администраторы"} and is_admin("vk", user_id):
+            tg = await list_admins("telegram")
+            vk = await list_admins("vk")
+            await _answer(message, "👥 АДМИНИСТРАТОРЫ\\n\\n" + f"Telegram: {', '.join(r['user_id'] for r in tg) or 'нет'}\\nVK: {', '.join(r['user_id'] for r in vk) or 'нет'}", _admin_panel_keyboard())
+            return
+
+        if normalized in {"🏠 главное меню", "🏠 панель"} and is_admin("vk", user_id):
+            if normalized == "🏠 главное меню":
+                await _answer(message, "👋 Главное меню:", main_keyboard)
+            else:
+                stats = await application_stats()
+                await _answer(message, f"🛠 АДМИН-ПАНЕЛЬ\\n\\n📥 Ожидают: {stats['pending']}\\n✅ Одобрено: {stats['approved']}\\n❌ Отклонено: {stats['rejected']}\\n📊 Всего: {stats['total']}", _admin_panel_keyboard())
+            return
+
+        if is_admin("vk", user_id) and normalized.startswith("#") and normalized[1:].split()[0].isdigit():
+            app_id = int(normalized[1:].split()[0])
+            app = await get_application(app_id)
+            if app:
+                import html
+                await _answer(message, f"🎫 ЗАЯВКА #{app_id}\\n\\n👤 {html.escape(app['name'])}\\n🎂 {app['age']}\\n📍 {html.escape(app['city'])}\\n💬 {html.escape(app['reason'])}\\n⭐ {html.escape(app['interests'])}\\n\\n🌐 Платформа: {app['platform']}\\n🆔 ID: {app['user_id']}\\n📌 Статус: {app['status']}\\n📝 Причина отказа: {html.escape(app['reject_reason'] or '—')}", _application_keyboard(app_id, app['status']))
+                return
+
+        if is_admin("vk", user_id) and normalized.startswith("✅ одобрить #"):
+            try: app_id = int(normalized.split("#", 1)[1])
+            except ValueError: app_id = 0
+            app = await get_application(app_id) if app_id else None
+            if not app:
+                await _answer(message, "❌ Заявка не найдена.", _admin_panel_keyboard())
+                return
+            if await set_status(app_id, "approved"):
+                if app["platform"] == "vk":
+                    await _send_vk(int(app["user_id"]), f"🎉 Твоя заявка #{app_id} одобрена! Добро пожаловать в фан-клуб.", main_keyboard)
+                await _answer(message, f"✅ Заявка #{app_id} одобрена.", _admin_panel_keyboard())
+            else:
+                await _answer(message, "ℹ️ Заявка уже обработана.", _admin_panel_keyboard())
+            return
+
+        if is_admin("vk", user_id) and normalized.startswith("❌ отклонить #"):
+            try: app_id = int(normalized.split("#", 1)[1])
+            except ValueError: app_id = 0
+            if app_id:
+                VK_STATES[str(user_id)] = {"step": "admin_reject_reason", "app_id": app_id}
+                await _answer(message, f"📝 Напиши причину отклонения заявки #{app_id}.", _admin_panel_keyboard())
+            return
+
+        state = VK_STATES.get(str(user_id))
+        if state and state.get("step") == "admin_reject_reason" and is_admin("vk", user_id):
+            reason = text
+            if not 2 <= len(reason) <= 500:
+                await _answer(message, "Причина должна быть от 2 до 500 символов.", _admin_panel_keyboard())
+                return
+            app_id = int(state["app_id"])
+            app = await get_application(app_id)
+            VK_STATES.pop(str(user_id), None)
+            if app and await set_status(app_id, "rejected", reason):
+                if app["platform"] == "vk":
+                    await _send_vk(int(app["user_id"]), f"❌ Заявка #{app_id} отклонена.\\nПричина: {reason}", main_keyboard)
+                await _answer(message, f"❌ Заявка #{app_id} отклонена.", _admin_panel_keyboard())
+            else:
+                await _answer(message, "ℹ️ Заявка уже обработана или не найдена.", _admin_panel_keyboard())
             return
 
         if normalized == "🎫 подать заявку":
