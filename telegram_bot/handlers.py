@@ -6,8 +6,8 @@ from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.types import CallbackQuery, Message
 
-from config import admin_ids, is_admin
-from database import create_application, get_application, has_pending, set_status
+from config import admin_ids, is_admin, is_owner
+from database import add_admin, create_application, get_application, has_pending, list_admins, remove_admin, set_status
 from .keyboards import admin_keyboard, confirm_keyboard, main_keyboard
 
 router = Router()
@@ -125,3 +125,42 @@ async def reject_reason(message: Message,state:FSMContext):
         await message.answer(f"❌ Заявка #{app_id} отклонена.")
     else: await message.answer("Заявка уже обработана или не найдена.")
     await state.clear()
+
+
+@router.message(F.text.startswith("/addadmin"))
+async def add_admin_command(message: Message):
+    if not is_owner("telegram", message.from_user.id):
+        return await message.answer("⛔ Только владелец может управлять администраторами.")
+    parts=(message.text or "").split()
+    if len(parts)!=3 or parts[1].lower() not in {"tg","telegram","vk"} or not parts[2].isdigit():
+        return await message.answer("Использование: /addadmin tg ID или /addadmin vk ID")
+    platform="telegram" if parts[1].lower() in {"tg","telegram"} else "vk"
+    user_id=int(parts[2])
+    if await add_admin(platform,user_id,message.from_user.id):
+        await message.answer(f"✅ Администратор добавлен.\nПлатформа: {platform}\nID: <code>{user_id}</code>",parse_mode="HTML")
+    else:
+        await message.answer("ℹ️ Этот ID уже есть среди администраторов.")
+
+
+@router.message(F.text.startswith("/deladmin"))
+async def del_admin_command(message: Message):
+    if not is_owner("telegram", message.from_user.id):
+        return await message.answer("⛔ Только владелец может управлять администраторами.")
+    parts=(message.text or "").split()
+    if len(parts)!=3 or parts[1].lower() not in {"tg","telegram","vk"} or not parts[2].isdigit():
+        return await message.answer("Использование: /deladmin tg ID или /deladmin vk ID")
+    platform="telegram" if parts[1].lower() in {"tg","telegram"} else "vk"
+    user_id=int(parts[2])
+    if user_id in __import__("config").owner_ids(platform):
+        return await message.answer("⛔ Владельца удалить нельзя.")
+    await message.answer("✅ Администратор удалён." if await remove_admin(platform,user_id) else "ℹ️ Такой администратор не найден.")
+
+
+@router.message(F.text == "/admins")
+async def admins_command(message: Message):
+    if not is_owner("telegram", message.from_user.id):
+        return await message.answer("⛔ Только владелец может смотреть список администраторов.")
+    tg=await list_admins("telegram")
+    vk=await list_admins("vk")
+    lines=["👑 <b>Администраторы BeloraSupport</b>","",f"Telegram: {', '.join(r['user_id'] for r in tg) or 'нет'}",f"VK: {', '.join(r['user_id'] for r in vk) or 'нет'}"]
+    await message.answer("\n".join(lines),parse_mode="HTML")
