@@ -141,13 +141,23 @@ async def run_vk_bot() -> None:
             logger.exception("❌ Failed to send VK message to peer_id=%s", peer_id)
 
     def _admin_panel_keyboard() -> str:
-        keyboard = {"one_time": False, "inline": False, "buttons": [
-            [{"action": {"type": "text", "label": "📥 Ожидают"}, "color": "primary"}],
-            [{"action": {"type": "text", "label": "📋 Все заявки"}, "color": "secondary"}],
-            [{"action": {"type": "text", "label": "📊 Статистика"}, "color": "secondary"}],
-            [{"action": {"type": "text", "label": "👥 Администраторы"}, "color": "secondary"}],
-            [{"action": {"type": "text", "label": "🏠 Главное меню"}, "color": "secondary"}],
-        ]}
+        keyboard = {
+            "one_time": False,
+            "inline": False,
+            "buttons": [
+                [
+                    {"action": {"type": "text", "label": "📥 Новые"}, "color": "primary"},
+                    {"action": {"type": "text", "label": "📋 Все"}, "color": "secondary"},
+                ],
+                [
+                    {"action": {"type": "text", "label": "📊 Статистика"}, "color": "secondary"},
+                    {"action": {"type": "text", "label": "👥 Админы"}, "color": "secondary"},
+                ],
+                [
+                    {"action": {"type": "text", "label": "🏠 Главное меню"}, "color": "secondary"},
+                ],
+            ],
+        }
         return json.dumps(keyboard, ensure_ascii=False)
 
     def _admin_list_keyboard(apps, page: int, total: int, status_prefix: str) -> str:
@@ -270,10 +280,10 @@ async def run_vk_bot() -> None:
 ❌ Отклонено: {stats['rejected']}", _admin_panel_keyboard())
             return
 
-        if normalized in {"📥 ожидают", "ожидают"} and is_admin("vk", user_id):
+        if normalized in {"📥 новые", "ожидают"} and is_admin("vk", user_id):
             apps = await list_applications("pending", limit=10, offset=0)
             total = await count_applications("pending")
-            await _answer(message, "📥 Ожидающих заявок нет." if not apps else "📥 ЗАЯВКИ НА РАССМОТРЕНИИ\
+            await _answer(message, "📥 <b>Новых заявок нет.</b>" if not apps else "📥 НОВЫЕ ЗАЯВКИ\
 \
 Выбери заявку:", _admin_panel_keyboard() if not apps else _admin_list_keyboard(apps, 0, total, "pending"))
             return
@@ -307,7 +317,7 @@ VK: {', '.join(r['user_id'] for r in vk) or 'нет'}", _admin_panel_keyboard())
                 page -= 1
                 VK_ADMIN_PAGES[str(user_id)]["page"] = page
                 apps = await list_applications(status, limit=10, offset=page * 10)
-            title = "📥 ЗАЯВКИ НА РАССМОТРЕНИИ" if mode == "pending" else "📋 ВСЕ ЗАЯВКИ"
+            title = "📥 НОВЫЕ ЗАЯВКИ" if mode == "pending" else "📋 ВСЕ ЗАЯВКИ"
             await _answer(message, title + "\
 \
 Выбери заявку:", _admin_panel_keyboard() if not apps else _admin_list_keyboard(apps, page, total, mode))
