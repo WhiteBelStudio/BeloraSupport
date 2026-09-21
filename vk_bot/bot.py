@@ -10,7 +10,8 @@ from config import admin_ids, is_admin
 
 logger = logging.getLogger("BeloraSupport.VK")
 
-VK_STATES: dict[str, dict] = {}\nVK_ADMIN_PAGES: dict[str, dict[str, int]] = {}
+VK_STATES: dict[str, dict] = {}
+VK_ADMIN_PAGES: dict[str, dict[str, int]] = {}
 
 
 def _main_keyboard() -> str:
