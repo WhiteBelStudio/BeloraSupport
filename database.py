@@ -16,6 +16,7 @@ async def init_db() -> None:
     async with aiosqlite.connect(DB_PATH) as db:
         await db.execute("CREATE TABLE IF NOT EXISTS applications (id INTEGER PRIMARY KEY AUTOINCREMENT, platform TEXT NOT NULL, user_id TEXT NOT NULL, username TEXT, name TEXT NOT NULL, age INTEGER NOT NULL, city TEXT NOT NULL, reason TEXT NOT NULL, interests TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'pending', reject_reason TEXT, created_at TEXT NOT NULL, updated_at TEXT NOT NULL)")
         await db.execute("CREATE INDEX IF NOT EXISTS idx_app_user_status ON applications(platform,user_id,status)")
+        await db.execute("CREATE TABLE IF NOT EXISTS admins (platform TEXT NOT NULL, user_id TEXT NOT NULL, added_by TEXT NOT NULL, created_at TEXT NOT NULL, PRIMARY KEY(platform,user_id))")
         await db.commit()
 
 
@@ -45,3 +46,24 @@ async def set_status(application_id: int, status: str, reject_reason: str | None
         cur = await db.execute("UPDATE applications SET status=?,reject_reason=?,updated_at=? WHERE id=? AND status='pending'", (status,reject_reason,now(),application_id))
         await db.commit()
         return cur.rowcount > 0
+
+
+async def add_admin(platform: str, user_id: int, added_by: int) -> bool:
+    async with aiosqlite.connect(DB_PATH) as db:
+        cur = await db.execute("INSERT OR IGNORE INTO admins(platform,user_id,added_by,created_at) VALUES(?,?,?,?)", (platform,str(user_id),str(added_by),now()))
+        await db.commit()
+        return cur.rowcount > 0
+
+
+async def remove_admin(platform: str, user_id: int) -> bool:
+    async with aiosqlite.connect(DB_PATH) as db:
+        cur = await db.execute("DELETE FROM admins WHERE platform=? AND user_id=?", (platform,str(user_id)))
+        await db.commit()
+        return cur.rowcount > 0
+
+
+async def list_admins(platform: str):
+    async with aiosqlite.connect(DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        cur = await db.execute("SELECT * FROM admins WHERE platform=? ORDER BY created_at", (platform,))
+        return await cur.fetchall()
