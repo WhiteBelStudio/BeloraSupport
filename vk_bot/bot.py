@@ -23,12 +23,13 @@ async def run_vk_bot() -> None:
         return
 
     from vkbottle import Bot
+    from vkbottle.bot import Message
 
     bot = Bot(token=token)
     keyboard = _main_keyboard()
 
     @bot.on.message()
-    async def handle(message):
+    async def handle(message: Message):
         logger.info(
             "VK message received: peer_id=%s from_id=%s text=%r",
             getattr(message, "peer_id", None),
