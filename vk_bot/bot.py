@@ -41,6 +41,7 @@ async def _prepare_vk_group(bot) -> int | None:
                 "messages": 1,
                 "bots_capabilities": 1,
                 "bots_start_button": 1,
+                "bots_add_to_chat": 1,
             },
         )
 
@@ -63,6 +64,12 @@ async def _prepare_vk_group(bot) -> int | None:
             {"group_id": group_id},
         )
         logger.info("✅ VK Long Poll settings: %s", settings.get("response", settings))
+
+        bot_settings = await bot.api.request(
+            "groups.getSettings",
+            {"group_id": group_id},
+        )
+        logger.info("🔧 VK bot settings after setup: %s", bot_settings.get("response", bot_settings))
         return group_id
     except Exception:
         logger.exception("❌ VK API setup failed; polling will still start")
