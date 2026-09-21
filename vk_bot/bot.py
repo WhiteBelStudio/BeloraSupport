@@ -16,6 +16,51 @@ def _main_keyboard():
     return keyboard.get_json()
 
 
+async def _prepare_vk_group(bot) -> int | None:
+    """Verify VK community identity and Long Poll message events."""
+    try:
+        groups = await bot.api.request("groups.getById", {"fields": "name"})
+        group = (groups.get("response") or [{}])[0]
+        group_id = int(group["id"])
+        group_name = group.get("name", "VK community")
+
+        logger.info("🔎 VK community detected: %s (id=%s)", group_name, group_id)
+
+        await bot.api.request(
+            "groups.setSettings",
+            {
+                "group_id": group_id,
+                "messages": 1,
+                "bots_capabilities": 1,
+                "bots_start_button": 1,
+            },
+        )
+
+        await bot.api.request(
+            "groups.setLongPollSettings",
+            {
+                "group_id": group_id,
+                "enabled": 1,
+                "api_version": "5.199",
+                "message_new": 1,
+                "message_reply": 0,
+                "message_edit": 0,
+                "message_allow": 1,
+                "message_deny": 1,
+            },
+        )
+
+        settings = await bot.api.request(
+            "groups.getLongPollSettings",
+            {"group_id": group_id},
+        )
+        logger.info("✅ VK Long Poll settings: %s", settings.get("response", settings))
+        return group_id
+    except Exception:
+        logger.exception("❌ VK API setup failed; polling will still start")
+        return None
+
+
 async def run_vk_bot() -> None:
     token = os.getenv("VK_TOKEN")
     if not token:
@@ -26,12 +71,15 @@ async def run_vk_bot() -> None:
     from vkbottle.bot import Message
 
     bot = Bot(token=token)
+
+    await _prepare_vk_group(bot)
+
     keyboard = _main_keyboard()
 
     @bot.on.message()
     async def handle(message: Message):
         logger.info(
-            "VK message received: peer_id=%s from_id=%s text=%r",
+            "📩 VK message received: peer_id=%s from_id=%s text=%r",
             getattr(message, "peer_id", None),
             getattr(message, "from_id", None),
             getattr(message, "text", None),
@@ -60,6 +108,7 @@ async def run_vk_bot() -> None:
             "Выбери действие:",
             keyboard=keyboard,
         )
+
 
     logger.info("VK bot started; message handler registered")
     await bot.run_polling()
