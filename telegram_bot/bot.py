@@ -14,75 +14,58 @@ logger = logging.getLogger("BeloraSupport.Telegram")
 
 
 async def _cleanup_webhook(bot: Bot) -> None:
-    """
-    Webhook cleanup must never block the bot from entering polling.
-    Some Pterodactyl hosts have unstable access to api.telegram.org.
-    """
-    timeout = float(os.getenv("TELEGRAM_WEBHOOK_TIMEOUT", "15"))
+    # Do not let a broken connection to api.telegram.org prevent polling.
+    timeout = float(os.getenv("TELEGRAM_WEBHOOK_TIMEOUT", "10"))
 
     try:
-        await bot.delete_webhook(
-            drop_pending_updates=True,
-            request_timeout=timeout,
+        await asyncio.wait_for(
+            bot.delete_webhook(drop_pending_updates=True),
+            timeout=timeout,
         )
         logger.info("✅ Telegram webhook removed")
-
+    except asyncio.TimeoutError:
+        logger.warning(
+            "⚠️ Telegram webhook cleanup timed out after %.0f sec.; "
+            "starting polling anyway.",
+            timeout,
+        )
     except asyncio.CancelledError:
         raise
-
     except Exception as exc:
-        # Polling is still allowed to start. If Telegram is reachable,
-        # getUpdates will establish the connection itself.
         logger.warning(
-            "⚠️ Не удалось удалить Telegram webhook за %.0f сек.: %s",
-            timeout,
+            "⚠️ Telegram webhook cleanup failed: %s; starting polling anyway.",
             exc,
-        )
-        logger.warning(
-            "➡️ Продолжаем запуск Telegram polling без ожидания webhook."
         )
 
 
 async def run_telegram_bot() -> None:
     token = os.getenv("TELEGRAM_BOT_TOKEN")
-
     if not token:
         raise RuntimeError("TELEGRAM_BOT_TOKEN is not configured")
 
-    # A long timeout is useful for long polling, but startup requests must
-    # not be allowed to block the whole application indefinitely.
-    session = AiohttpSession(
-        timeout=120,
-    )
-
-    bot = Bot(
-        token=token,
-        session=session,
-    )
+    session = AiohttpSession(timeout=30)
+    bot = Bot(token=token, session=session)
 
     dp = Dispatcher()
     dp.include_router(router)
 
     try:
         logger.info("🤖 Telegram bot starting...")
-
-        # Do not let webhook cleanup prevent polling from starting.
         await _cleanup_webhook(bot)
 
         logger.info("📡 Telegram polling starting...")
         await dp.start_polling(
             bot,
             close_bot_session=False,
+            polling_timeout=20,
         )
 
     except asyncio.CancelledError:
         logger.info("🛑 Telegram bot stopping...")
         raise
-
     except Exception:
         logger.exception("❌ Telegram polling stopped with an error")
         raise
-
     finally:
         try:
             await bot.session.close()
