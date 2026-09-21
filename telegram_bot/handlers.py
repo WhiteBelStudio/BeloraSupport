@@ -79,9 +79,13 @@ async def apply_confirm(callback: CallbackQuery, state: FSMContext):
     await state.clear()
     await callback.message.answer(f"✅ Заявка <b>#{app_id}</b> отправлена администраторам.",parse_mode="HTML",reply_markup=main_keyboard())
     text=(f"🎫 <b>Новая заявка #{app_id}</b>\n\n👤 {data['name']}\n🎂 {data['age']}\n📍 {data['city']}\n💬 {data['reason']}\n⭐ {data['interests']}\n\nTelegram ID: <code>{user.id}</code>\nUsername: @{user.username or 'нет'}")
-    for admin_id in admin_ids():
-        try: await callback.bot.send_message(admin_id,text,parse_mode="HTML",reply_markup=admin_keyboard(app_id))
-        except Exception: pass
+    recipient_ids = set(admin_ids("telegram"))
+    recipient_ids.update(int(row["user_id"]) for row in await list_admins("telegram"))
+    for admin_id in recipient_ids:
+        try:
+            await callback.bot.send_message(admin_id,text,parse_mode="HTML",reply_markup=admin_keyboard(app_id))
+        except Exception:
+            pass
 
 @router.callback_query(F.data == "apply_restart")
 async def restart(callback: CallbackQuery,state:FSMContext):
@@ -98,7 +102,7 @@ async def my_application(callback: CallbackQuery):
 
 @router.callback_query(F.data.startswith("app_approve:"))
 async def approve(callback: CallbackQuery):
-    if not is_admin(callback.from_user.id): return await callback.answer("Нет доступа.",show_alert=True)
+    if not is_admin("telegram", callback.from_user.id): return await callback.answer("Нет доступа.",show_alert=True)
     app_id=int(callback.data.split(":")[1]); app=await get_application(app_id)
     if not app: return await callback.answer("Заявка не найдена.",show_alert=True)
     if not await set_status(app_id,"approved"): return await callback.answer("Заявка уже обработана.",show_alert=True)
@@ -114,7 +118,7 @@ async def reject(callback: CallbackQuery,state:FSMContext):
 
 @router.message(ApplicationForm.reject_reason)
 async def reject_reason(message: Message,state:FSMContext):
-    if not is_admin(message.from_user.id): return await state.clear()
+    if not is_admin("telegram", message.from_user.id): return await state.clear()
     reason=(message.text or "").strip()
     if not 2 <= len(reason) <= 500: return await message.answer("Причина: от 2 до 500 символов.")
     app_id=int((await state.get_data())["reject_app_id"]); app=await get_application(app_id)
