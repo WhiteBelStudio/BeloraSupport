@@ -43,7 +43,11 @@ async def run_telegram_bot() -> None:
     if not token:
         raise RuntimeError("TELEGRAM_BOT_TOKEN is not configured")
 
-    session = AiohttpSession(timeout=30)
+    proxy = os.getenv("TELEGRAM_PROXY", "").strip() or None
+    if proxy:
+        logger.info("🌐 Telegram proxy enabled")
+
+    session = AiohttpSession(timeout=30, proxy=proxy)
     bot = Bot(token=token, session=session)
 
     dp = Dispatcher()
