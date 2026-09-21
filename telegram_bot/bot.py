@@ -13,57 +13,44 @@ from .handlers import router
 logger = logging.getLogger("BeloraSupport.Telegram")
 
 
-async def _delete_webhook_with_retry(bot: Bot) -> None:
+async def _cleanup_webhook(bot: Bot) -> None:
     """
-    Telegram API can be temporarily unreachable from a Pterodactyl node.
-    Retry the initial webhook cleanup instead of immediately killing the
-    whole application.
+    Webhook cleanup must never block the bot from entering polling.
+    Some Pterodactyl hosts have unstable access to api.telegram.org.
     """
-    attempts = int(os.getenv("TELEGRAM_CONNECT_RETRIES", "5"))
-    delay = float(os.getenv("TELEGRAM_RETRY_DELAY", "5"))
+    timeout = float(os.getenv("TELEGRAM_WEBHOOK_TIMEOUT", "15"))
 
-    for attempt in range(1, attempts + 1):
-        try:
-            await bot.delete_webhook(
-                drop_pending_updates=True,
-                request_timeout=120,
-            )
-            logger.info("✅ Telegram webhook removed")
-            return
+    try:
+        await bot.delete_webhook(
+            drop_pending_updates=True,
+            request_timeout=timeout,
+        )
+        logger.info("✅ Telegram webhook removed")
 
-        except asyncio.CancelledError:
-            raise
+    except asyncio.CancelledError:
+        raise
 
-        except Exception as exc:
-            if attempt >= attempts:
-                logger.error(
-                    "❌ Telegram API недоступен после %s попыток: %s",
-                    attempts,
-                    exc,
-                )
-                raise
-
-            logger.warning(
-                "⚠️ Telegram API недоступен "
-                "(попытка %s/%s): %s. Повтор через %.1f сек.",
-                attempt,
-                attempts,
-                exc,
-                delay,
-            )
-            await asyncio.sleep(delay)
+    except Exception as exc:
+        # Polling is still allowed to start. If Telegram is reachable,
+        # getUpdates will establish the connection itself.
+        logger.warning(
+            "⚠️ Не удалось удалить Telegram webhook за %.0f сек.: %s",
+            timeout,
+            exc,
+        )
+        logger.warning(
+            "➡️ Продолжаем запуск Telegram polling без ожидания webhook."
+        )
 
 
 async def run_telegram_bot() -> None:
     token = os.getenv("TELEGRAM_BOT_TOKEN")
 
     if not token:
-        raise RuntimeError(
-            "TELEGRAM_BOT_TOKEN is not configured"
-        )
+        raise RuntimeError("TELEGRAM_BOT_TOKEN is not configured")
 
-    # 120 seconds gives the Pterodactyl host more time to establish
-    # an HTTPS connection to api.telegram.org.
+    # A long timeout is useful for long polling, but startup requests must
+    # not be allowed to block the whole application indefinitely.
     session = AiohttpSession(
         timeout=120,
     )
@@ -79,9 +66,10 @@ async def run_telegram_bot() -> None:
     try:
         logger.info("🤖 Telegram bot starting...")
 
-        await _delete_webhook_with_retry(bot)
+        # Do not let webhook cleanup prevent polling from starting.
+        await _cleanup_webhook(bot)
 
-        logger.info("✅ Telegram polling started")
+        logger.info("📡 Telegram polling starting...")
         await dp.start_polling(
             bot,
             close_bot_session=False,
@@ -91,8 +79,14 @@ async def run_telegram_bot() -> None:
         logger.info("🛑 Telegram bot stopping...")
         raise
 
+    except Exception:
+        logger.exception("❌ Telegram polling stopped with an error")
+        raise
+
     finally:
-        # Explicitly close the aiohttp session so Pterodactyl does not
-        # report "Unclosed client session" during shutdown.
-        await bot.session.close()
-        logger.info("✅ Telegram HTTP session closed")
+        try:
+            await bot.session.close()
+        except Exception:
+            logger.exception("⚠️ Failed to close Telegram HTTP session")
+        else:
+            logger.info("✅ Telegram HTTP session closed")
