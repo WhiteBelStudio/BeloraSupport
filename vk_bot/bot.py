@@ -20,7 +20,15 @@ async def _prepare_vk_group(bot) -> int | None:
     """Verify VK community identity and Long Poll message events."""
     try:
         groups = await bot.api.request("groups.getById", {"fields": "name"})
-        group = (groups.get("response") or [{}])[0]
+        response = groups.get("response", groups)
+        if isinstance(response, dict):
+            items = response.get("items") or []
+            group = items[0] if items else response
+        elif isinstance(response, list):
+            group = response[0] if response else {}
+        else:
+            group = {}
+
         group_id = int(group["id"])
         group_name = group.get("name", "VK community")
 
