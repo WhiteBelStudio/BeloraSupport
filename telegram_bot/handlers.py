@@ -7,8 +7,8 @@ from aiogram.fsm.state import State, StatesGroup
 from aiogram.types import CallbackQuery, Message
 
 from config import admin_ids, is_admin, is_owner
-from database import add_admin, create_application, get_application, has_pending, list_admins, remove_admin, set_status
-from .keyboards import admin_keyboard, confirm_keyboard, main_keyboard
+from database import add_admin, application_stats, count_applications, create_application, get_application, has_pending, list_admins, list_applications, remove_admin, set_status
+from .keyboards import admin_keyboard, admin_list_keyboard, admin_panel_keyboard, application_admin_keyboard, confirm_keyboard, main_keyboard
 
 router = Router()
 
@@ -168,3 +168,129 @@ async def admins_command(message: Message):
     vk=await list_admins("vk")
     lines=["👑 <b>Администраторы BeloraSupport</b>","",f"Telegram: {', '.join(r['user_id'] for r in tg) or 'нет'}",f"VK: {', '.join(r['user_id'] for r in vk) or 'нет'}"]
     await message.answer("\n".join(lines),parse_mode="HTML")
+
+
+# ===== Telegram admin panel =====
+
+def _panel_text(stats: dict[str, int]) -> str:
+    return (
+        "🛠 <b>Панель администратора BeloraSupport</b>\\n\\n"
+        f"📥 На рассмотрении: <b>{stats['pending']}</b>\\n"
+        f"✅ Одобрено: <b>{stats['approved']}</b>\\n"
+        f"❌ Отклонено: <b>{stats['rejected']}</b>\\n"
+        f"📊 Всего заявок: <b>{stats['total']}</b>\\n\\n"
+        "Выбери раздел:"
+    )
+
+
+@router.message(F.text == "/panel")
+async def admin_panel_command(message: Message):
+    if not is_admin("telegram", message.from_user.id):
+        return await message.answer("⛔ Доступ только для администраторов.")
+    await message.answer(_panel_text(await application_stats()), parse_mode="HTML", reply_markup=admin_panel_keyboard())
+
+
+@router.callback_query(F.data == "panel_home")
+async def panel_home(callback: CallbackQuery):
+    if not is_admin("telegram", callback.from_user.id):
+        return await callback.answer("Нет доступа.", show_alert=True)
+    await callback.answer()
+    await callback.message.edit_text(_panel_text(await application_stats()), parse_mode="HTML", reply_markup=admin_panel_keyboard())
+
+
+@router.callback_query(F.data == "panel_stats")
+async def panel_stats(callback: CallbackQuery):
+    if not is_admin("telegram", callback.from_user.id):
+        return await callback.answer("Нет доступа.", show_alert=True)
+    await callback.answer()
+    stats = await application_stats()
+    await callback.message.edit_text(
+        "📊 <b>Статистика</b>\\n\\n"
+        f"📋 Всего: <b>{stats['total']}</b>\\n"
+        f"📥 Ожидают: <b>{stats['pending']}</b>\\n"
+        f"✅ Одобрено: <b>{stats['approved']}</b>\\n"
+        f"❌ Отклонено: <b>{stats['rejected']}</b>",
+        parse_mode="HTML",
+        reply_markup=admin_panel_keyboard(),
+    )
+
+
+@router.callback_query(F.data.startswith("panel_pending:"))
+async def panel_pending(callback: CallbackQuery):
+    if not is_admin("telegram", callback.from_user.id):
+        return await callback.answer("Нет доступа.", show_alert=True)
+    await callback.answer()
+    page = max(0, int(callback.data.split(":", 1)[1]))
+    total = await count_applications("pending")
+    apps = await list_applications("pending", limit=10, offset=page * 10)
+    if not apps:
+        return await callback.message.edit_text("📥 <b>Ожидающих заявок нет.</b>", parse_mode="HTML", reply_markup=admin_panel_keyboard())
+    text = f"📥 <b>Заявки на рассмотрении</b>\\nСтраница {page + 1}\\n\\nВыбери заявку:"
+    await callback.message.edit_text(text, parse_mode="HTML", reply_markup=admin_list_keyboard(apps, page, total, "panel_pending"))
+
+
+@router.callback_query(F.data.startswith("panel_all:"))
+async def panel_all(callback: CallbackQuery):
+    if not is_admin("telegram", callback.from_user.id):
+        return await callback.answer("Нет доступа.", show_alert=True)
+    await callback.answer()
+    page = max(0, int(callback.data.split(":", 1)[1]))
+    total = await count_applications()
+    apps = await list_applications(limit=10, offset=page * 10)
+    if not apps:
+        return await callback.message.edit_text("📋 <b>Заявок пока нет.</b>", parse_mode="HTML", reply_markup=admin_panel_keyboard())
+    await callback.message.edit_text(
+        f"📋 <b>Все заявки</b>\\nСтраница {page + 1}\\n\\nВыбери заявку:",
+        parse_mode="HTML",
+        reply_markup=admin_list_keyboard(apps, page, total, "panel_all"),
+    )
+
+
+@router.callback_query(F.data.startswith("panel_app:"))
+async def panel_application(callback: CallbackQuery):
+    if not is_admin("telegram", callback.from_user.id):
+        return await callback.answer("Нет доступа.", show_alert=True)
+    await callback.answer()
+    app_id = int(callback.data.split(":", 1)[1])
+    app = await get_application(app_id)
+    if not app:
+        return await callback.message.edit_text("❌ Заявка не найдена.", reply_markup=admin_panel_keyboard())
+    import html
+    username = f"@{html.escape(app['username'])}" if app['username'] else "нет"
+    reject_reason = html.escape(app['reject_reason']) if app['reject_reason'] else "—"
+    text = (
+        f"🎫 <b>Заявка #{app['id']}</b>\\n\\n"
+        f"👤 <b>Имя:</b> {html.escape(app['name'])}\\n"
+        f"🎂 <b>Возраст:</b> {app['age']}\\n"
+        f"📍 <b>Город:</b> {html.escape(app['city'])}\\n"
+        f"💬 <b>Почему:</b> {html.escape(app['reason'])}\\n"
+        f"⭐ <b>Интересы:</b> {html.escape(app['interests'])}\\n\\n"
+        f"🌐 <b>Платформа:</b> {html.escape(app['platform'])}\\n"
+        f"🆔 <b>User ID:</b> <code>{app['user_id']}</code>\\n"
+        f"👤 <b>Username:</b> {username}\\n"
+        f"📌 <b>Статус:</b> {html.escape(app['status'])}\\n"
+        f"📝 <b>Причина отказа:</b> {reject_reason}\\n"
+        f"🕒 <b>Создана:</b> {html.escape(app['created_at'])}"
+    )
+    await callback.message.edit_text(text, parse_mode="HTML", reply_markup=application_admin_keyboard(app_id, app["status"]))
+
+
+@router.callback_query(F.data == "panel_admins")
+async def panel_admins(callback: CallbackQuery):
+    if not is_admin("telegram", callback.from_user.id):
+        return await callback.answer("Нет доступа.", show_alert=True)
+    await callback.answer()
+    tg = await list_admins("telegram")
+    vk = await list_admins("vk")
+    from config import owner_ids
+    tg_owner = ", ".join(str(x) for x in owner_ids("telegram")) or "не задан"
+    vk_owner = ", ".join(str(x) for x in owner_ids("vk")) or "не задан"
+    text = (
+        "👥 <b>Администраторы</b>\\n\\n"
+        f"👑 Telegram-владелец: <code>{tg_owner}</code>\\n"
+        f"👑 VK-владелец: <code>{vk_owner}</code>\\n\\n"
+        f"📱 Telegram: {', '.join(r['user_id'] for r in tg) or 'нет'}\\n"
+        f"💬 VK: {', '.join(r['user_id'] for r in vk) or 'нет'}\\n\\n"
+        "Добавление/удаление: /addadmin tg ID, /addadmin vk ID, /deladmin tg ID, /deladmin vk ID"
+    )
+    await callback.message.edit_text(text, parse_mode="HTML", reply_markup=admin_panel_keyboard())
