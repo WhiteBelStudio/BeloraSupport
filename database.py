@@ -67,3 +67,36 @@ async def list_admins(platform: str):
         db.row_factory = aiosqlite.Row
         cur = await db.execute("SELECT * FROM admins WHERE platform=? ORDER BY created_at", (platform,))
         return await cur.fetchall()
+
+
+async def list_applications(status: str | None = None, limit: int = 20, offset: int = 0):
+    limit = max(1, min(int(limit), 100))
+    offset = max(0, int(offset))
+    async with aiosqlite.connect(DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        if status:
+            cur = await db.execute("SELECT * FROM applications WHERE status=? ORDER BY id DESC LIMIT ? OFFSET ?", (status, limit, offset))
+        else:
+            cur = await db.execute("SELECT * FROM applications ORDER BY id DESC LIMIT ? OFFSET ?", (limit, offset))
+        return await cur.fetchall()
+
+
+async def count_applications(status: str | None = None) -> int:
+    async with aiosqlite.connect(DB_PATH) as db:
+        if status:
+            cur = await db.execute("SELECT COUNT(*) FROM applications WHERE status=?", (status,))
+        else:
+            cur = await db.execute("SELECT COUNT(*) FROM applications")
+        row = await cur.fetchone()
+        return int(row[0])
+
+
+async def application_stats() -> dict[str, int]:
+    async with aiosqlite.connect(DB_PATH) as db:
+        cur = await db.execute("SELECT status, COUNT(*) FROM applications GROUP BY status")
+        rows = await cur.fetchall()
+    result = {"pending": 0, "approved": 0, "rejected": 0, "total": 0}
+    for status, count in rows:
+        result[str(status)] = int(count)
+        result["total"] += int(count)
+    return result
