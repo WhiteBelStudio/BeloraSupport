@@ -100,3 +100,14 @@ async def application_stats() -> dict[str, int]:
         result[str(status)] = int(count)
         result["total"] += int(count)
     return result
+
+
+async def clear_all_applications() -> int:
+    """Delete all saved applications and return the number removed."""
+    async with aiosqlite.connect(DB_PATH) as db:
+        cur = await db.execute("SELECT COUNT(*) FROM applications")
+        row = await cur.fetchone()
+        count = int(row[0]) if row else 0
+        await db.execute("DELETE FROM applications")
+        await db.commit()
+        return count
