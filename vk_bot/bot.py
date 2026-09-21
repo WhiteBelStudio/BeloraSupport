@@ -7,13 +7,35 @@ logger = logging.getLogger("BeloraSupport.VK")
 
 
 def _main_keyboard():
-    from vkbottle import Keyboard, Text
+    # Build the VK keyboard explicitly so its JSON is independent of
+    # VKBottle's keyboard builder and is visible as a persistent bot keyboard.
+    import json
 
-    keyboard = Keyboard(one_time=False)
-    keyboard.add(Text("🎫 Подать заявку"))
-    keyboard.row()
-    keyboard.add(Text("📋 Моя заявка"))
-    return keyboard.get_json()
+    keyboard = {
+        "one_time": False,
+        "inline": False,
+        "buttons": [
+            [
+                {
+                    "action": {
+                        "type": "text",
+                        "label": "🎫 Подать заявку",
+                    },
+                    "color": "primary",
+                }
+            ],
+            [
+                {
+                    "action": {
+                        "type": "text",
+                        "label": "📋 Моя заявка",
+                    },
+                    "color": "secondary",
+                }
+            ],
+        ],
+    }
+    return json.dumps(keyboard, ensure_ascii=False)
 
 
 async def _prepare_vk_group(bot) -> int | None:
@@ -96,6 +118,7 @@ async def run_vk_bot() -> None:
     await _prepare_vk_group(bot)
 
     keyboard = _main_keyboard()
+    logger.info("⌨️ VK keyboard prepared: %s", keyboard)
 
     async def _answer(message: Message, text: str) -> None:
         try:
