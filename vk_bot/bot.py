@@ -10,7 +10,7 @@ from config import admin_ids, is_admin
 
 logger = logging.getLogger("BeloraSupport.VK")
 
-VK_STATES: dict[str, dict] = {}
+VK_STATES: dict[str, dict] = {}\nVK_ADMIN_PAGES: dict[str, dict[str, int]] = {}
 
 
 def _main_keyboard() -> str:
@@ -229,7 +229,7 @@ async def run_vk_bot() -> None:
             )
             return
 
-        if normalized == "🛠 админ-панель":
+        if normalized in {"🛠 админ-панель", "/panel"}:
             if not is_admin("vk", user_id):
                 await _answer(message, "⛔ Доступ только для администраторов.", main_keyboard)
                 return
@@ -258,6 +258,22 @@ async def run_vk_bot() -> None:
             tg = await list_admins("telegram")
             vk = await list_admins("vk")
             await _answer(message, "👥 АДМИНИСТРАТОРЫ\\n\\n" + f"Telegram: {', '.join(r['user_id'] for r in tg) or 'нет'}\\nVK: {', '.join(r['user_id'] for r in vk) or 'нет'}", _admin_panel_keyboard())
+            return
+
+        if normalized in {"⬅️ предыдущая", "➡️ следующая"} and is_admin("vk", user_id):
+            info = VK_ADMIN_PAGES.get(str(user_id), {"mode": "pending", "page": 0})
+            page = max(0, info["page"] + (1 if normalized == "➡️ следующая" else -1))
+            mode = info["mode"]
+            VK_ADMIN_PAGES[str(user_id)] = {"mode": mode, "page": page}
+            status = "pending" if mode == "pending" else None
+            total = await count_applications(status)
+            apps = await list_applications(status, limit=10, offset=page * 10)
+            if not apps and page > 0:
+                page -= 1
+                VK_ADMIN_PAGES[str(user_id)]["page"] = page
+                apps = await list_applications(status, limit=10, offset=page * 10)
+            title = "📥 ЗАЯВКИ НА РАССМОТРЕНИИ" if mode == "pending" else "📋 ВСЕ ЗАЯВКИ"
+            await _answer(message, title + "\\n\\nВыбери заявку:", _admin_panel_keyboard() if not apps else _admin_list_keyboard(apps, page, total, mode))
             return
 
         if normalized in {"🏠 главное меню", "🏠 панель"} and is_admin("vk", user_id):
