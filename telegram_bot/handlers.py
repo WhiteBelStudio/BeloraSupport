@@ -178,12 +178,15 @@ async def admins_command(message: Message):
 
 def _panel_text(stats: dict[str, int]) -> str:
     return (
-        "🛠 <b>Панель администратора BeloraSupport</b>\\n\\n"
-        f"📥 На рассмотрении: <b>{stats['pending']}</b>\\n"
-        f"✅ Одобрено: <b>{stats['approved']}</b>\\n"
-        f"❌ Отклонено: <b>{stats['rejected']}</b>\\n"
-        f"📊 Всего заявок: <b>{stats['total']}</b>\\n\\n"
-        "Выбери раздел:"
+        "🛠 <b>BeloraSupport • Admin Center</b>\n"
+        "━━━━━━━━━━━━━━━━━━\n\n"
+        f"📥 <b>Новые заявки:</b> {stats['pending']}\n"
+        f"📊 <b>Всего заявок:</b> {stats['total']}\n"
+        f"✅ <b>Одобрено:</b> {stats['approved']}\n"
+        f"❌ <b>Отклонено:</b> {stats['rejected']}\n\n"
+        "━━━━━━━━━━━━━━━━━━\n"
+        "<b>Управление</b>\n"
+        "Выбери нужный раздел ниже:"
     )
 
 
@@ -209,7 +212,7 @@ async def panel_stats(callback: CallbackQuery):
     await callback.answer()
     stats = await application_stats()
     await callback.message.edit_text(
-        "📊 <b>Статистика</b>\\n\\n"
+        "📊 <b>Статистика BeloraSupport</b>\n━━━━━━━━━━━━━━━━━━\n\n"
         f"📋 Всего: <b>{stats['total']}</b>\\n"
         f"📥 Ожидают: <b>{stats['pending']}</b>\\n"
         f"✅ Одобрено: <b>{stats['approved']}</b>\\n"
