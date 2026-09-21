@@ -21,6 +21,10 @@ class ApplicationForm(StatesGroup):
     confirm = State()
     reject_reason = State()
 
+
+class AdminManageForm(StatesGroup):
+    user_id = State()
+
 @router.message(CommandStart())
 async def start(message: Message, state: FSMContext):
     await state.clear()
@@ -294,3 +298,70 @@ async def panel_admins(callback: CallbackQuery):
         "Добавление/удаление: /addadmin tg ID, /addadmin vk ID, /deladmin tg ID, /deladmin vk ID"
     )
     await callback.message.edit_text(text, parse_mode="HTML", reply_markup=admin_panel_keyboard())
+
+
+@router.callback_query(F.data.startswith("admin_add:"))
+async def admin_add_start(callback: CallbackQuery, state: FSMContext):
+    if not is_owner("telegram", callback.from_user.id):
+        return await callback.answer("Только владелец может управлять администраторами.", show_alert=True)
+    platform = callback.data.split(":", 1)[1]
+    await state.update_data(admin_action="add", admin_platform=platform)
+    await state.set_state(AdminManageForm.user_id)
+    await callback.answer()
+    label = "Telegram" if platform == "telegram" else "VK"
+    await callback.message.edit_text(
+        f"➕ <b>Добавление {label}-администратора</b>\n\nОтправь ID пользователя одним сообщением.\n\n⬅️ Для отмены используй /panel.",
+        parse_mode="HTML",
+    )
+
+
+@router.callback_query(F.data.startswith("admin_del:"))
+async def admin_del_start(callback: CallbackQuery, state: FSMContext):
+    if not is_owner("telegram", callback.from_user.id):
+        return await callback.answer("Только владелец может управлять администраторами.", show_alert=True)
+    platform = callback.data.split(":", 1)[1]
+    await state.update_data(admin_action="delete", admin_platform=platform)
+    await state.set_state(AdminManageForm.user_id)
+    await callback.answer()
+    label = "Telegram" if platform == "telegram" else "VK"
+    await callback.message.edit_text(
+        f"🗑 <b>Удаление {label}-администратора</b>\n\nОтправь ID пользователя одним сообщением.\n\n⬅️ Для отмены используй /panel.",
+        parse_mode="HTML",
+    )
+
+
+@router.message(AdminManageForm.user_id)
+async def admin_manage_user_id(message: Message, state: FSMContext):
+    if not is_owner("telegram", message.from_user.id):
+        await state.clear()
+        return await message.answer("⛔ Только владелец может управлять администраторами.")
+    raw = (message.text or "").strip()
+    if not raw.isdigit():
+        return await message.answer("❗ ID должен состоять только из цифр. Попробуй ещё раз.")
+    data = await state.get_data()
+    platform = data["admin_platform"]
+    user_id = int(raw)
+    from config import owner_ids
+    if user_id in owner_ids(platform):
+        await state.clear()
+        return await message.answer("⛔ Владельца удалить нельзя.", reply_markup=admin_management_keyboard())
+    if data["admin_action"] == "add":
+        changed = await add_admin(platform, user_id, message.from_user.id)
+        result = "✅ Администратор добавлен." if changed else "ℹ️ Этот ID уже является администратором."
+    else:
+        changed = await remove_admin(platform, user_id)
+        result = "🗑 Администратор удалён." if changed else "ℹ️ Такой администратор не найден."
+    await state.clear()
+    tg = await list_admins("telegram")
+    vk = await list_admins("vk")
+    tg_owner = ", ".join(str(x) for x in owner_ids("telegram")) or "не задан"
+    vk_owner = ", ".join(str(x) for x in owner_ids("vk")) or "не задан"
+    text = (
+        "👥 <b>Управление администраторами</b>\n\n"
+        f"👑 Telegram-владелец: <code>{tg_owner}</code>\n"
+        f"👑 VK-владелец: <code>{vk_owner}</code>\n\n"
+        f"📱 <b>Telegram:</b> {', '.join(r['user_id'] for r in tg) or 'нет'}\n"
+        f"💬 <b>VK:</b> {', '.join(r['user_id'] for r in vk) or 'нет'}\n\n"
+        f"{result}"
+    )
+    await message.answer(text, parse_mode="HTML", reply_markup=admin_management_keyboard())
