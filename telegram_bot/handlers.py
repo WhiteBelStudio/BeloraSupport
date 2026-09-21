@@ -113,7 +113,7 @@ async def approve(callback: CallbackQuery):
 
 @router.callback_query(F.data.startswith("app_reject:"))
 async def reject(callback: CallbackQuery,state:FSMContext):
-    if not is_admin(callback.from_user.id): return await callback.answer("Нет доступа.",show_alert=True)
+    if not is_admin("telegram", callback.from_user.id): return await callback.answer("Нет доступа.",show_alert=True)
     await state.update_data(reject_app_id=int(callback.data.split(":")[1])); await state.set_state(ApplicationForm.reject_reason); await callback.answer(); await callback.message.answer("Напиши причину отклонения заявки.")
 
 @router.message(ApplicationForm.reject_reason)
