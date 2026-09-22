@@ -28,6 +28,14 @@ def _main_keyboard() -> str:
     return json.dumps(keyboard, ensure_ascii=False)
 
 
+def _rules_keyboard() -> str:
+    return json.dumps({
+        "one_time": True,
+        "inline": False,
+        "buttons": [[{"action": {"type": "text", "label": "✅ Принимаю правила"}, "color": "positive"}]],
+    }, ensure_ascii=False)
+
+
 def _confirm_keyboard() -> str:
     keyboard = {
         "one_time": True,
@@ -531,11 +539,5 @@ async def run_vk_bot() -> None:
         VK_STATES.pop(str(user_id), None)
 
     logger.info("VK bot started; message handler registered")
-    await bot.run_polling()    def _rules_keyboard() -> str:
-        return json.dumps({
-            "one_time": True,
-            "inline": False,
-            "buttons": [[{"action": {"type": "text", "label": "✅ Принимаю правила"}, "color": "positive"}]],
-        }, ensure_ascii=False)
-
+    await bot.run_polling()
 
