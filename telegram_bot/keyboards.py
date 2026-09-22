@@ -2,7 +2,7 @@ from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 
 
 def main_keyboard():
-    return InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="🎫 Подать заявку", callback_data="apply")],[InlineKeyboardButton(text="📋 Моя заявка", callback_data="my_application")]])
+    return InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="🎫 Подать заявку", callback_data="apply")],[InlineKeyboardButton(text="📋 Правила", callback_data="rules")],[InlineKeyboardButton(text="📋 Моя заявка", callback_data="my_application")]])
 
 
 def confirm_keyboard():
@@ -36,3 +36,7 @@ def application_admin_keyboard(app_id: int, status: str = "pending"):
     if status=="pending": rows.append([InlineKeyboardButton(text="✅ Одобрить",callback_data=f"app_approve:{app_id}"),InlineKeyboardButton(text="❌ Отклонить",callback_data=f"app_reject:{app_id}")])
     rows.append([InlineKeyboardButton(text="⬅️ К списку",callback_data="panel_pending:0"),InlineKeyboardButton(text="🏠 Панель",callback_data="panel_home")])
     return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+def rules_keyboard():
+    return InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="✅ Принимаю правила", callback_data="rules_accept")]])
