@@ -223,10 +223,17 @@ async def ban_command(message: Message):
     from config import owner_ids
     if user_id in owner_ids(platform):
         return await message.answer("⛔ Владельца заблокировать нельзя.")
+    if is_admin(platform, user_id):
+        return await message.answer("⛔ Администратора заблокировать нельзя.")
     reason = parts[3].strip()
     if not 2 <= len(reason) <= 500:
         return await message.answer("Причина бана: от 2 до 500 символов.")
     await ban_user(platform, user_id, reason, message.from_user.id)
+    if platform == "telegram":
+        try:
+            await message.bot.send_message(user_id, f"🚫 <b>Доступ ограничен</b>\n\nПричина: {reason}", parse_mode="HTML")
+        except Exception:
+            pass
     await message.answer(f"🚫 Пользователь <code>{user_id}</code> заблокирован.\nПлатформа: {platform}\nПричина: {reason}", parse_mode="HTML")
 
 @router.message(F.text.regexp(r"^/unban(?:\s|$)"))
@@ -239,6 +246,11 @@ async def unban_command(message: Message):
     platform = "telegram" if parts[1].lower() in {"tg", "telegram"} else "vk"
     user_id = int(parts[2])
     if await unban_user(platform, user_id):
+        if platform == "telegram":
+            try:
+                await message.bot.send_message(user_id, "✅ <b>Доступ восстановлен</b>\n\nОграничение с твоего аккаунта снято.", parse_mode="HTML")
+            except Exception:
+                pass
         await message.answer(f"✅ Пользователь <code>{user_id}</code> разблокирован.", parse_mode="HTML")
     else:
         await message.answer("ℹ️ Такой пользователь не заблокирован.")
