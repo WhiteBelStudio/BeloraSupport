@@ -7,7 +7,7 @@ from aiogram.fsm.state import State, StatesGroup
 from aiogram.types import CallbackQuery, Message
 
 from config import admin_ids, is_admin, is_owner, register_admin, unregister_admin
-from database import add_admin, application_stats, count_applications, create_application, get_application, has_pending, list_admins, list_applications, remove_admin, set_status
+from database import add_admin, application_stats, ban_user, count_applications, create_application, get_application, get_ban, has_pending, is_banned, list_admins, list_applications, list_bans, remove_admin, set_status, unban_user
 from .keyboards import admin_keyboard, admin_list_keyboard, admin_panel_keyboard, application_admin_keyboard, confirm_keyboard, main_keyboard
 
 router = Router()
@@ -28,15 +28,43 @@ class AdminManageForm(StatesGroup):
 @router.message(CommandStart())
 async def start(message: Message, state: FSMContext):
     await state.clear()
+    ban = await get_ban("telegram", message.from_user.id)
+    if ban:
+        return await message.answer("🚫 <b>Доступ ограничен</b>\n\nПричина: " + ban["reason"], parse_mode="HTML")
     await message.answer("👋 Добро пожаловать в фан-клуб!\n\nЗдесь можно подать заявку на вступление.", reply_markup=main_keyboard())
 
-@router.callback_query(F.data == "apply")
-async def apply_start(callback: CallbackQuery, state: FSMContext):
+RULES_TEXT = (
+    "📋 <b>Правила создания анкеты</b>\n\n"
+    "• Указывай достоверную информацию о себе.\n"
+    "• Запрещены оскорбления, угрозы, травля и дискриминация.\n"
+    "• Запрещён сексуальный и другой неподходящий контент.\n"
+    "• Запрещены реклама, спам, мошенничество и обман.\n"
+    "• Не публикуй чужие персональные данные без разрешения.\n"
+    "• Фотография, имя и описание анкеты не должны нарушать правила платформы.\n"
+    "• Администрация может отклонить анкету или ограничить доступ при нарушении правил.\n\n"
+    "Нажимая «✅ Принимаю правила», ты подтверждаешь, что ознакомился с правилами."
+)
+
+@router.callback_query(F.data.in_({"apply", "rules"}))
+async def rules_start(callback: CallbackQuery, state: FSMContext):
     await callback.answer()
+    ban = await get_ban("telegram", callback.from_user.id)
+    if ban:
+        return await callback.message.answer("🚫 <b>Доступ ограничен</b>\n\nПричина: " + ban["reason"], parse_mode="HTML")
+    await state.clear()
+    from .keyboards import rules_keyboard
+    await callback.message.answer(RULES_TEXT, parse_mode="HTML", reply_markup=rules_keyboard())
+
+@router.callback_query(F.data == "rules_accept")
+async def rules_accept(callback: CallbackQuery, state: FSMContext):
+    await callback.answer()
+    ban = await get_ban("telegram", callback.from_user.id)
+    if ban:
+        return await callback.message.answer("🚫 <b>Доступ ограничен</b>\n\nПричина: " + ban["reason"], parse_mode="HTML")
     if await has_pending("telegram", str(callback.from_user.id)):
-        await callback.message.answer("⏳ У тебя уже есть заявка на рассмотрении.")
-        return
-    await state.clear(); await state.set_state(ApplicationForm.name)
+        return await callback.message.answer("⏳ У тебя уже есть заявка на рассмотрении.")
+    await state.clear()
+    await state.set_state(ApplicationForm.name)
     await callback.message.answer("1/5. Как тебя зовут или как к тебе обращаться?")
 
 @router.message(ApplicationForm.name)
@@ -78,7 +106,11 @@ async def form_interests(message: Message, state: FSMContext):
 
 @router.callback_query(F.data == "apply_confirm", ApplicationForm.confirm)
 async def apply_confirm(callback: CallbackQuery, state: FSMContext):
-    await callback.answer(); data=await state.get_data(); user=callback.from_user
+    await callback.answer()
+    if await is_banned("telegram", callback.from_user.id):
+        await state.clear()
+        return await callback.message.answer("🚫 Доступ ограничен.")
+    data=await state.get_data(); user=callback.from_user
     app_id=await create_application("telegram",str(user.id),user.username,data["name"],data["age"],data["city"],data["reason"],data["interests"])
     await state.clear()
     await callback.message.answer(f"✅ Заявка <b>#{app_id}</b> отправлена администраторам.",parse_mode="HTML",reply_markup=main_keyboard())
@@ -144,11 +176,12 @@ async def add_admin_command(message: Message):
         return await message.answer("Использование: /addadmin tg ID или /addadmin vk ID")
     platform="telegram" if parts[1].lower() in {"tg","telegram"} else "vk"
     user_id=int(parts[2])
-    if await add_admin(platform,user_id,message.from_user.id):
-        register_admin(platform, user_id)
-        await message.answer(f"✅ Администратор добавлен.\nПлатформа: {platform}\nID: <code>{user_id}</code>",parse_mode="HTML")
+    added = await add_admin(platform, user_id, message.from_user.id)
+    register_admin(platform, user_id)
+    if added:
+        await message.answer(f"✅ Администратор добавлен.\nПлатформа: {platform}\nID: <code>{user_id}</code>", parse_mode="HTML")
     else:
-        await message.answer("ℹ️ Этот ID уже есть среди администраторов.")
+        await message.answer(f"ℹ️ Этот ID уже был администратором.\nКэш прав обновлён.\nПлатформа: {platform}\nID: <code>{user_id}</code>", parse_mode="HTML")
 
 
 @router.message(F.text.startswith("/deladmin"))
@@ -177,6 +210,50 @@ async def admins_command(message: Message):
     lines=["👑 <b>Администраторы BeloraSupport</b>","",f"Telegram: {', '.join(r['user_id'] for r in tg) or 'нет'}",f"VK: {', '.join(r['user_id'] for r in vk) or 'нет'}"]
     await message.answer("\n".join(lines),parse_mode="HTML")
 
+
+@router.message(F.text.startswith("/ban"))
+async def ban_command(message: Message):
+    if not is_admin("telegram", message.from_user.id):
+        return await message.answer("⛔ Доступ только для администраторов.")
+    parts = (message.text or "").split(maxsplit=3)
+    if len(parts) < 4 or parts[1].lower() not in {"tg", "telegram", "vk"} or not parts[2].isdigit():
+        return await message.answer("Использование: /ban tg ID причина или /ban vk ID причина")
+    platform = "telegram" if parts[1].lower() in {"tg", "telegram"} else "vk"
+    user_id = int(parts[2])
+    from config import owner_ids
+    if user_id in owner_ids(platform):
+        return await message.answer("⛔ Владельца заблокировать нельзя.")
+    reason = parts[3].strip()
+    if not 2 <= len(reason) <= 500:
+        return await message.answer("Причина бана: от 2 до 500 символов.")
+    await ban_user(platform, user_id, reason, message.from_user.id)
+    await message.answer(f"🚫 Пользователь <code>{user_id}</code> заблокирован.\nПлатформа: {platform}\nПричина: {reason}", parse_mode="HTML")
+
+@router.message(F.text.startswith("/unban"))
+async def unban_command(message: Message):
+    if not is_admin("telegram", message.from_user.id):
+        return await message.answer("⛔ Доступ только для администраторов.")
+    parts = (message.text or "").split()
+    if len(parts) != 3 or parts[1].lower() not in {"tg", "telegram", "vk"} or not parts[2].isdigit():
+        return await message.answer("Использование: /unban tg ID или /unban vk ID")
+    platform = "telegram" if parts[1].lower() in {"tg", "telegram"} else "vk"
+    user_id = int(parts[2])
+    if await unban_user(platform, user_id):
+        await message.answer(f"✅ Пользователь <code>{user_id}</code> разблокирован.", parse_mode="HTML")
+    else:
+        await message.answer("ℹ️ Такой пользователь не заблокирован.")
+
+@router.message(F.text == "/banned")
+async def banned_command(message: Message):
+    if not is_admin("telegram", message.from_user.id):
+        return await message.answer("⛔ Доступ только для администраторов.")
+    rows = await list_bans()
+    if not rows:
+        return await message.answer("🚫 Заблокированных пользователей нет.")
+    lines = ["🚫 <b>Заблокированные пользователи</b>", ""]
+    for row in rows[:50]:
+        lines.append(f"• <code>{row['user_id']}</code> — {row['platform']} — {row['reason']}")
+    await message.answer("\n".join(lines), parse_mode="HTML")
 
 # ===== Telegram admin panel =====
 
