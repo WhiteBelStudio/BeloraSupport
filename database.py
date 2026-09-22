@@ -52,14 +52,22 @@ async def add_admin(platform: str, user_id: int, added_by: int) -> bool:
     async with aiosqlite.connect(DB_PATH) as db:
         cur = await db.execute("INSERT OR IGNORE INTO admins(platform,user_id,added_by,created_at) VALUES(?,?,?,?)", (platform,str(user_id),str(added_by),now()))
         await db.commit()
-        return cur.rowcount > 0
+        added = cur.rowcount > 0
+    if added:
+        from config import register_admin
+        register_admin(platform, user_id)
+    return added
 
 
 async def remove_admin(platform: str, user_id: int) -> bool:
     async with aiosqlite.connect(DB_PATH) as db:
         cur = await db.execute("DELETE FROM admins WHERE platform=? AND user_id=?", (platform,str(user_id)))
         await db.commit()
-        return cur.rowcount > 0
+        removed = cur.rowcount > 0
+    if removed:
+        from config import unregister_admin
+        unregister_admin(platform, user_id)
+    return removed
 
 
 async def list_admins(platform: str):
