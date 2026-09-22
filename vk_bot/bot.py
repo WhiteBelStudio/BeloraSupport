@@ -277,6 +277,8 @@ async def run_vk_bot() -> None:
                 await _answer(message, "Причина бана: от 2 до 500 символов.", main_keyboard)
                 return
             await ban_user(platform, target_id, reason, user_id)
+            if platform == "vk":
+                await _send_vk(target_id, "🚫 ДОСТУП ОГРАНИЧЕН\n\nПричина: " + reason, main_keyboard)
             await _answer(message, f"🚫 Пользователь {target_id} заблокирован.\nПлатформа: {platform}\nПричина: {reason}", _admin_panel_keyboard())
             return
 
@@ -291,6 +293,8 @@ async def run_vk_bot() -> None:
             platform = "telegram" if parts[1].lower() in {"tg", "telegram"} else "vk"
             target_id = int(parts[2])
             result = await unban_user(platform, target_id)
+            if result and platform == "vk":
+                await _send_vk(target_id, "✅ ДОСТУП ВОССТАНОВЛЕН\n\nОграничение с твоего аккаунта снято.", main_keyboard)
             await _answer(message, "✅ Пользователь разблокирован." if result else "ℹ️ Такой пользователь не заблокирован.", _admin_panel_keyboard())
             return
 
