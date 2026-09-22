@@ -6,7 +6,7 @@ from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.types import CallbackQuery, Message
 
-from config import admin_ids, is_admin, is_owner
+from config import admin_ids, is_admin, is_owner, register_admin, unregister_admin
 from database import add_admin, application_stats, count_applications, create_application, get_application, has_pending, list_admins, list_applications, remove_admin, set_status
 from .keyboards import admin_keyboard, admin_list_keyboard, admin_panel_keyboard, application_admin_keyboard, confirm_keyboard, main_keyboard
 
@@ -145,6 +145,7 @@ async def add_admin_command(message: Message):
     platform="telegram" if parts[1].lower() in {"tg","telegram"} else "vk"
     user_id=int(parts[2])
     if await add_admin(platform,user_id,message.from_user.id):
+        register_admin(platform, user_id)
         await message.answer(f"✅ Администратор добавлен.\nПлатформа: {platform}\nID: <code>{user_id}</code>",parse_mode="HTML")
     else:
         await message.answer("ℹ️ Этот ID уже есть среди администраторов.")
@@ -161,7 +162,10 @@ async def del_admin_command(message: Message):
     user_id=int(parts[2])
     if user_id in __import__("config").owner_ids(platform):
         return await message.answer("⛔ Владельца удалить нельзя.")
-    await message.answer("✅ Администратор удалён." if await remove_admin(platform,user_id) else "ℹ️ Такой администратор не найден.")
+    removed = await remove_admin(platform,user_id)
+    if removed:
+        unregister_admin(platform, user_id)
+    await message.answer("✅ Администратор удалён." if removed else "ℹ️ Такой администратор не найден.")
 
 
 @router.message(F.text == "/admins")
