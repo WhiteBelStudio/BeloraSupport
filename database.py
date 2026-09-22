@@ -50,28 +50,36 @@ async def set_status(application_id: int, status: str, reject_reason: str | None
 
 
 async def add_admin(platform: str, user_id: int, added_by: int) -> bool:
+    platform = "telegram" if str(platform).lower() in {"tg", "telegram"} else "vk"
+    user_id = int(user_id)
     async with aiosqlite.connect(DB_PATH) as db:
-        cur = await db.execute("INSERT OR IGNORE INTO admins(platform,user_id,added_by,created_at) VALUES(?,?,?,?)", (platform,str(user_id),str(added_by),now()))
+        cur = await db.execute(
+            "INSERT OR IGNORE INTO admins(platform,user_id,added_by,created_at) VALUES(?,?,?,?)",
+            (platform, str(user_id), str(added_by), now()),
+        )
         await db.commit()
         added = cur.rowcount > 0
-    if added:
-        from config import register_admin
-        register_admin(platform, user_id)
+    # Always synchronize the in-memory authorization cache, even when the row
+    # already existed. This makes granting/re-granting rights deterministic.
+    from config import register_admin
+    register_admin(platform, user_id)
     return added
 
 
 async def remove_admin(platform: str, user_id: int) -> bool:
+    platform = "telegram" if str(platform).lower() in {"tg", "telegram"} else "vk"
+    user_id = int(user_id)
     async with aiosqlite.connect(DB_PATH) as db:
         cur = await db.execute("DELETE FROM admins WHERE platform=? AND user_id=?", (platform,str(user_id)))
         await db.commit()
         removed = cur.rowcount > 0
-    if removed:
-        from config import unregister_admin
-        unregister_admin(platform, user_id)
+    from config import unregister_admin
+    unregister_admin(platform, user_id)
     return removed
 
 
 async def list_admins(platform: str):
+    platform = "telegram" if str(platform).lower() in {"tg", "telegram"} else "vk"
     async with aiosqlite.connect(DB_PATH) as db:
         db.row_factory = aiosqlite.Row
         cur = await db.execute("SELECT * FROM admins WHERE platform=? ORDER BY created_at", (platform,))
@@ -112,7 +120,6 @@ async def application_stats() -> dict[str, int]:
 
 
 async def clear_all_applications() -> int:
-    """Delete all saved applications and return the number removed."""
     async with aiosqlite.connect(DB_PATH) as db:
         cur = await db.execute("SELECT COUNT(*) FROM applications")
         row = await cur.fetchone()
