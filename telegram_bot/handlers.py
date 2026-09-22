@@ -211,7 +211,7 @@ async def admins_command(message: Message):
     await message.answer("\n".join(lines),parse_mode="HTML")
 
 
-@router.message(F.text.startswith("/ban"))
+@router.message(F.text.regexp(r"^/ban(?:\\s|$)"))
 async def ban_command(message: Message):
     if not is_admin("telegram", message.from_user.id):
         return await message.answer("⛔ Доступ только для администраторов.")
@@ -229,7 +229,7 @@ async def ban_command(message: Message):
     await ban_user(platform, user_id, reason, message.from_user.id)
     await message.answer(f"🚫 Пользователь <code>{user_id}</code> заблокирован.\nПлатформа: {platform}\nПричина: {reason}", parse_mode="HTML")
 
-@router.message(F.text.startswith("/unban"))
+@router.message(F.text.regexp(r"^/unban(?:\\s|$)"))
 async def unban_command(message: Message):
     if not is_admin("telegram", message.from_user.id):
         return await message.answer("⛔ Доступ только для администраторов.")
