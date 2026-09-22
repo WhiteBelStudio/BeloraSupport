@@ -17,6 +17,7 @@ async def init_db() -> None:
         await db.execute("CREATE TABLE IF NOT EXISTS applications (id INTEGER PRIMARY KEY AUTOINCREMENT, platform TEXT NOT NULL, user_id TEXT NOT NULL, username TEXT, name TEXT NOT NULL, age INTEGER NOT NULL, city TEXT NOT NULL, reason TEXT NOT NULL, interests TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'pending', reject_reason TEXT, created_at TEXT NOT NULL, updated_at TEXT NOT NULL)")
         await db.execute("CREATE INDEX IF NOT EXISTS idx_app_user_status ON applications(platform,user_id,status)")
         await db.execute("CREATE TABLE IF NOT EXISTS admins (platform TEXT NOT NULL, user_id TEXT NOT NULL, added_by TEXT NOT NULL, created_at TEXT NOT NULL, PRIMARY KEY(platform,user_id))")
+        await db.execute("CREATE TABLE IF NOT EXISTS bans (platform TEXT NOT NULL, user_id TEXT NOT NULL, reason TEXT NOT NULL, banned_by TEXT NOT NULL, created_at TEXT NOT NULL, PRIMARY KEY(platform,user_id))")
         await db.commit()
 
 
@@ -119,3 +120,38 @@ async def clear_all_applications() -> int:
         await db.execute("DELETE FROM applications")
         await db.commit()
         return count
+
+
+async def ban_user(platform: str, user_id: int, reason: str, banned_by: int) -> bool:
+    async with aiosqlite.connect(DB_PATH) as db:
+        cur = await db.execute("INSERT OR REPLACE INTO bans(platform,user_id,reason,banned_by,created_at) VALUES(?,?,?,?,?)", (platform, str(user_id), reason, str(banned_by), now()))
+        await db.commit()
+        return cur.rowcount > 0
+
+
+async def unban_user(platform: str, user_id: int) -> bool:
+    async with aiosqlite.connect(DB_PATH) as db:
+        cur = await db.execute("DELETE FROM bans WHERE platform=? AND user_id=?", (platform, str(user_id)))
+        await db.commit()
+        return cur.rowcount > 0
+
+
+async def get_ban(platform: str, user_id: str | int):
+    async with aiosqlite.connect(DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        cur = await db.execute("SELECT * FROM bans WHERE platform=? AND user_id=?", (platform, str(user_id)))
+        return await cur.fetchone()
+
+
+async def is_banned(platform: str, user_id: str | int) -> bool:
+    return await get_ban(platform, user_id) is not None
+
+
+async def list_bans(platform: str | None = None):
+    async with aiosqlite.connect(DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        if platform:
+            cur = await db.execute("SELECT * FROM bans WHERE platform=? ORDER BY created_at DESC", (platform,))
+        else:
+            cur = await db.execute("SELECT * FROM bans ORDER BY created_at DESC")
+        return await cur.fetchall()
