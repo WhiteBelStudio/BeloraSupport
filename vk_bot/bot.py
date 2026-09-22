@@ -255,7 +255,7 @@ async def run_vk_bot() -> None:
             await _answer(message, f"🛠 АДМИН-ПАНЕЛЬ\n\n📥 Ожидают: {stats['pending']}\n✅ Одобрено: {stats['approved']}\n❌ Отклонено: {stats['rejected']}\n📊 Всего: {stats['total']}\n\nВыбери раздел:", _admin_panel_keyboard())
             return
 
-        if normalized.startswith("/ban"):
+        if normalized == "/ban" or normalized.startswith("/ban "):
             if not is_admin("vk", user_id):
                 await _answer(message, "⛔ Доступ только для администраторов.", main_keyboard)
                 return
@@ -280,7 +280,7 @@ async def run_vk_bot() -> None:
             await _answer(message, f"🚫 Пользователь {target_id} заблокирован.\nПлатформа: {platform}\nПричина: {reason}", _admin_panel_keyboard())
             return
 
-        if normalized.startswith("/unban"):
+        if normalized == "/unban" or normalized.startswith("/unban "):
             if not is_admin("vk", user_id):
                 await _answer(message, "⛔ Доступ только для администраторов.", main_keyboard)
                 return
