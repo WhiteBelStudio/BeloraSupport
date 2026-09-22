@@ -5,7 +5,7 @@ import logging
 import os
 import secrets
 
-from database import application_stats, count_applications, create_application, get_application, has_pending, list_admins, list_applications, set_status
+from database import application_stats, ban_user, count_applications, create_application, get_application, get_ban, has_pending, is_banned, list_admins, list_applications, list_bans, set_status, unban_user
 from config import admin_ids, is_admin
 
 logger = logging.getLogger("BeloraSupport.VK")
@@ -21,6 +21,7 @@ def _main_keyboard() -> str:
         "buttons": [
             [{"action": {"type": "text", "label": "🎫 Подать заявку"}, "color": "primary"}],
             [{"action": {"type": "text", "label": "📋 Моя заявка"}, "color": "secondary"}],
+            [{"action": {"type": "text", "label": "📋 Правила"}, "color": "secondary"}],
             [{"action": {"type": "text", "label": "🛠 Админ-панель"}, "color": "secondary"}],
         ],
     }
@@ -230,6 +231,11 @@ async def run_vk_bot() -> None:
             text,
         )
 
+        if await is_banned("vk", user_id) and not is_admin("vk", user_id):
+            ban = await get_ban("vk", user_id)
+            await _answer(message, "🚫 ДОСТУП ОГРАНИЧЕН\n\nПричина: " + ban["reason"], main_keyboard)
+            return
+
         if normalized in {"/start", "начать", "старт"}:
             VK_STATES.pop(str(user_id), None)
             await _answer(
@@ -247,6 +253,59 @@ async def run_vk_bot() -> None:
                 return
             stats = await application_stats()
             await _answer(message, f"🛠 АДМИН-ПАНЕЛЬ\n\n📥 Ожидают: {stats['pending']}\n✅ Одобрено: {stats['approved']}\n❌ Отклонено: {stats['rejected']}\n📊 Всего: {stats['total']}\n\nВыбери раздел:", _admin_panel_keyboard())
+            return
+
+        if normalized.startswith("/ban"):
+            if not is_admin("vk", user_id):
+                await _answer(message, "⛔ Доступ только для администраторов.", main_keyboard)
+                return
+            parts = text.split(maxsplit=3)
+            if len(parts) < 4 or parts[1].lower() not in {"tg", "telegram", "vk"} or not parts[2].isdigit():
+                await _answer(message, "Использование: /ban tg ID причина или /ban vk ID причина", main_keyboard)
+                return
+            platform = "telegram" if parts[1].lower() in {"tg", "telegram"} else "vk"
+            target_id = int(parts[2])
+            from config import owner_ids
+            if target_id in owner_ids(platform):
+                await _answer(message, "⛔ Владельца заблокировать нельзя.", main_keyboard)
+                return
+            if is_admin(platform, target_id):
+                await _answer(message, "⛔ Администратора заблокировать нельзя.", main_keyboard)
+                return
+            reason = parts[3].strip()
+            if not 2 <= len(reason) <= 500:
+                await _answer(message, "Причина бана: от 2 до 500 символов.", main_keyboard)
+                return
+            await ban_user(platform, target_id, reason, user_id)
+            await _answer(message, f"🚫 Пользователь {target_id} заблокирован.\nПлатформа: {platform}\nПричина: {reason}", _admin_panel_keyboard())
+            return
+
+        if normalized.startswith("/unban"):
+            if not is_admin("vk", user_id):
+                await _answer(message, "⛔ Доступ только для администраторов.", main_keyboard)
+                return
+            parts = text.split()
+            if len(parts) != 3 or parts[1].lower() not in {"tg", "telegram", "vk"} or not parts[2].isdigit():
+                await _answer(message, "Использование: /unban tg ID или /unban vk ID", main_keyboard)
+                return
+            platform = "telegram" if parts[1].lower() in {"tg", "telegram"} else "vk"
+            target_id = int(parts[2])
+            result = await unban_user(platform, target_id)
+            await _answer(message, "✅ Пользователь разблокирован." if result else "ℹ️ Такой пользователь не заблокирован.", _admin_panel_keyboard())
+            return
+
+        if normalized == "/banned":
+            if not is_admin("vk", user_id):
+                await _answer(message, "⛔ Доступ только для администраторов.", main_keyboard)
+                return
+            rows = await list_bans()
+            if not rows:
+                await _answer(message, "🚫 Заблокированных пользователей нет.", _admin_panel_keyboard())
+                return
+            lines = ["🚫 ЗАБЛОКИРОВАННЫЕ ПОЛЬЗОВАТЕЛИ", ""]
+            for row in rows[:50]:
+                lines.append(f"• {row['user_id']} — {row['platform']} — {row['reason']}")
+            await _answer(message, "\n".join(lines), _admin_panel_keyboard())
             return
 
         if normalized in {"📊 статистика", "статистика"} and is_admin("vk", user_id):
@@ -344,7 +403,31 @@ async def run_vk_bot() -> None:
                 await _answer(message, "ℹ️ Заявка уже обработана или не найдена.", _admin_panel_keyboard())
             return
 
-        if normalized == "🎫 подать заявку":
+        if normalized == "📋 правила":
+            await _answer(
+                message,
+                "📋 ПРАВИЛА СОЗДАНИЯ АНКЕТЫ\n\n"
+                "• Указывай достоверную информацию о себе.\n"
+                "• Запрещены оскорбления, угрозы, травля и дискриминация.\n"
+                "• Запрещён сексуальный и другой неподходящий контент.\n"
+                "• Запрещены реклама, спам, мошенничество и обман.\n"
+                "• Не публикуй чужие персональные данные без разрешения.\n"
+                "• Фотография, имя и описание анкеты не должны нарушать правила платформы.\n"
+                "• Администрация может отклонить анкету или ограничить доступ при нарушении правил.\n\n"
+                "Нажимая «✅ Принимаю правила», ты подтверждаешь, что ознакомился с правилами.",
+                _rules_keyboard(),
+            )
+            return
+
+        if normalized in {"🎫 подать заявку"}:
+            if await has_pending("vk", str(user_id)):
+                await _answer(message, "⏳ У тебя уже есть заявка на рассмотрении.", main_keyboard)
+                return
+            VK_STATES[str(user_id)] = {"step": "rules"}
+            await _answer(message, "📋 Перед созданием анкеты ознакомься с правилами.", _rules_keyboard())
+            return
+
+        if normalized == "✅ принимаю правила":
             if await has_pending("vk", str(user_id)):
                 await _answer(message, "⏳ У тебя уже есть заявка на рассмотрении.", main_keyboard)
                 return
@@ -444,4 +527,11 @@ async def run_vk_bot() -> None:
         VK_STATES.pop(str(user_id), None)
 
     logger.info("VK bot started; message handler registered")
-    await bot.run_polling()
+    await bot.run_polling()    def _rules_keyboard() -> str:
+        return json.dumps({
+            "one_time": True,
+            "inline": False,
+            "buttons": [[{"action": {"type": "text", "label": "✅ Принимаю правила"}, "color": "positive"}]],
+        }, ensure_ascii=False)
+
+
