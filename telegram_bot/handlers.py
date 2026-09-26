@@ -6,7 +6,7 @@ from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.types import CallbackQuery, Message
 
-from config import admin_ids, is_admin, is_owner, register_admin, unregister_admin
+from config import admin_ids, effective_admin_ids, is_admin, is_owner, register_admin, unregister_admin
 from database import add_admin, application_stats, ban_user, count_applications, create_application, get_application, get_ban, has_pending, is_banned, list_admins, list_applications, list_bans, remove_admin, set_status, unban_user
 from .keyboards import admin_keyboard, admin_list_keyboard, admin_panel_keyboard, application_admin_keyboard, confirm_keyboard, main_keyboard
 
@@ -115,8 +115,7 @@ async def apply_confirm(callback: CallbackQuery, state: FSMContext):
     await state.clear()
     await callback.message.answer(f"✅ Заявка <b>#{app_id}</b> отправлена администраторам.",parse_mode="HTML",reply_markup=main_keyboard())
     text=(f"🎫 <b>Новая заявка #{app_id}</b>\n\n👤 {data['name']}\n🎂 {data['age']}\n📍 {data['city']}\n💬 {data['reason']}\n⭐ {data['interests']}\n\nTelegram ID: <code>{user.id}</code>\nUsername: @{user.username or 'нет'}")
-    recipient_ids = set(admin_ids("telegram"))
-    recipient_ids.update(int(row["user_id"]) for row in await list_admins("telegram"))
+    recipient_ids = effective_admin_ids("telegram")
     for admin_id in recipient_ids:
         try:
             await callback.bot.send_message(admin_id,text,parse_mode="HTML",reply_markup=admin_keyboard(app_id))
@@ -380,18 +379,19 @@ async def panel_admins(callback: CallbackQuery):
     if not is_admin("telegram", callback.from_user.id):
         return await callback.answer("Нет доступа.", show_alert=True)
     await callback.answer()
-    tg = await list_admins("telegram")
-    vk = await list_admins("vk")
-    from config import owner_ids
-    tg_owner = ", ".join(str(x) for x in owner_ids("telegram")) or "не задан"
-    vk_owner = ", ".join(str(x) for x in owner_ids("vk")) or "не задан"
+    from config import effective_admin_ids, owner_ids
+    tg_owner = ", ".join(str(x) for x in sorted(owner_ids("telegram"))) or "не задан"
+    vk_owner = ", ".join(str(x) for x in sorted(owner_ids("vk"))) or "не задан"
+    tg_access = ", ".join(str(x) for x in sorted(effective_admin_ids("telegram"))) or "нет"
+    vk_access = ", ".join(str(x) for x in sorted(effective_admin_ids("vk"))) or "нет"
     text = (
         "👥 <b>Администраторы</b>\n\n"
         f"👑 Telegram-владелец: <code>{tg_owner}</code>\n"
         f"👑 VK-владелец: <code>{vk_owner}</code>\n\n"
-        f"📱 Telegram: {', '.join(r['user_id'] for r in tg) or 'нет'}\n"
-        f"💬 VK: {', '.join(r['user_id'] for r in vk) or 'нет'}\n\n"
-        "Добавление/удаление: /addadmin tg ID, /addadmin vk ID, /deladmin tg ID, /deladmin vk ID"
+        f"📱 Telegram-доступ: <code>{tg_access}</code>\n"
+        f"💬 VK-доступ: <code>{vk_access}</code>\n\n"
+        "Управление только владельцем:\n"
+        "/addadmin tg ID\n/addadmin vk ID\n/deladmin tg ID\n/deladmin vk ID"
     )
     await callback.message.edit_text(text, parse_mode="HTML", reply_markup=admin_panel_keyboard())
 
