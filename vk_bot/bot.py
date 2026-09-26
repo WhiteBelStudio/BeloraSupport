@@ -327,7 +327,8 @@ async def run_vk_bot() -> None:
                 return
             await ban_user(platform, target_id, reason, user_id)
             if platform == "vk":
-                await _send_vk(target_id, "🚫 ДОСТУП ОГРАНИЧЕН\n\nПричина: " + reason, main_keyboard)
+                if not await _send_vk(target_id, "🚫 ДОСТУП ОГРАНИЧЕН\n\nПричина: " + reason, main_keyboard):
+                    logger.warning("VK user %s could not be notified about ban", target_id)
             await _answer(message, f"🚫 Пользователь {target_id} заблокирован.\nПлатформа: {platform}\nПричина: {reason}", _admin_panel_keyboard())
             return
 
@@ -343,7 +344,8 @@ async def run_vk_bot() -> None:
             target_id = int(parts[2])
             result = await unban_user(platform, target_id)
             if result and platform == "vk":
-                await _send_vk(target_id, "✅ ДОСТУП ВОССТАНОВЛЕН\n\nОграничение с твоего аккаунта снято.", main_keyboard)
+                if not await _send_vk(target_id, "✅ ДОСТУП ВОССТАНОВЛЕН\n\nОграничение с твоего аккаунта снято.", main_keyboard):
+                    logger.warning("VK user %s could not be notified about unban", target_id)
             await _answer(message, "✅ Пользователь разблокирован." if result else "ℹ️ Такой пользователь не заблокирован.", _admin_panel_keyboard())
             return
 
