@@ -5,8 +5,8 @@ import logging
 import os
 import secrets
 
-from database import application_stats, ban_user, count_applications, create_application, get_application, get_ban, has_pending, is_banned, list_admins, list_applications, list_bans, set_status, unban_user
-from config import admin_ids, is_admin
+from database import add_admin, application_stats, ban_user, count_applications, create_application, get_application, get_ban, has_pending, is_banned, list_admins, list_applications, list_bans, remove_admin, set_status, unban_user
+from config import effective_admin_ids, is_admin, is_owner
 
 logger = logging.getLogger("BeloraSupport.VK")
 
@@ -200,8 +200,7 @@ async def run_vk_bot() -> None:
             f"⭐ {data['interests']}\n\n"
             f"VK ID: {user_id}"
         )
-        recipients = set(admin_ids("vk"))
-        recipients.update(int(row["user_id"]) for row in await list_admins("vk"))
+        recipients = effective_admin_ids("vk")
         for admin_id in recipients:
             await _send_vk(admin_id, text, _admin_keyboard(app_id))
 
@@ -261,6 +260,40 @@ async def run_vk_bot() -> None:
                 return
             stats = await application_stats()
             await _answer(message, f"🛠 АДМИН-ПАНЕЛЬ\n\n📥 Ожидают: {stats['pending']}\n✅ Одобрено: {stats['approved']}\n❌ Отклонено: {stats['rejected']}\n📊 Всего: {stats['total']}\n\nВыбери раздел:", _admin_panel_keyboard())
+            return
+
+        if normalized == "/addadmin" or normalized.startswith("/addadmin "):
+            if not is_owner("vk", user_id):
+                await _answer(message, "⛔ Только владелец VK может управлять администраторами.", _admin_panel_keyboard())
+                return
+            parts = text.split()
+            if len(parts) != 3 or parts[1].lower() not in {"tg", "telegram", "vk", "vkontakte"} or not parts[2].isdigit():
+                await _answer(message, "Использование: /addadmin tg ID или /addadmin vk ID", _admin_panel_keyboard())
+                return
+            platform = "telegram" if parts[1].lower() in {"tg", "telegram"} else "vk"
+            target_id = int(parts[2])
+            if is_owner(platform, target_id):
+                await _answer(message, "👑 Этот ID уже является владельцем и имеет полный доступ.", _admin_panel_keyboard())
+                return
+            changed = await add_admin(platform, target_id, user_id)
+            await _answer(message, "✅ Администратор добавлен." if changed else "ℹ️ Этот ID уже является администратором. Права синхронизированы.", _admin_panel_keyboard())
+            return
+
+        if normalized == "/deladmin" or normalized.startswith("/deladmin "):
+            if not is_owner("vk", user_id):
+                await _answer(message, "⛔ Только владелец VK может управлять администраторами.", _admin_panel_keyboard())
+                return
+            parts = text.split()
+            if len(parts) != 3 or parts[1].lower() not in {"tg", "telegram", "vk", "vkontakte"} or not parts[2].isdigit():
+                await _answer(message, "Использование: /deladmin tg ID или /deladmin vk ID", _admin_panel_keyboard())
+                return
+            platform = "telegram" if parts[1].lower() in {"tg", "telegram"} else "vk"
+            target_id = int(parts[2])
+            if is_owner(platform, target_id):
+                await _answer(message, "⛔ Владельца удалить нельзя.", _admin_panel_keyboard())
+                return
+            changed = await remove_admin(platform, target_id)
+            await _answer(message, "🗑 Администратор удалён." if changed else "ℹ️ Такой администратор не найден.", _admin_panel_keyboard())
             return
 
         if normalized == "/ban" or normalized.startswith("/ban "):
@@ -338,9 +371,21 @@ async def run_vk_bot() -> None:
             return
 
         if normalized in {"👥 администраторы", "администраторы"} and is_admin("vk", user_id):
-            tg = await list_admins("telegram")
-            vk = await list_admins("vk")
-            await _answer(message, "👥 АДМИНИСТРАТОРЫ\n\n" + f"Telegram: {', '.join(r['user_id'] for r in tg) or 'нет'}\nVK: {', '.join(r['user_id'] for r in vk) or 'нет'}", _admin_panel_keyboard())
+            from config import owner_ids
+            tg_owner = ", ".join(str(x) for x in sorted(owner_ids("telegram"))) or "не задан"
+            vk_owner = ", ".join(str(x) for x in sorted(owner_ids("vk"))) or "не задан"
+            tg_access = ", ".join(str(x) for x in sorted(effective_admin_ids("telegram"))) or "нет"
+            vk_access = ", ".join(str(x) for x in sorted(effective_admin_ids("vk"))) or "нет"
+            text_admins = (
+                "👥 АДМИНИСТРАТОРЫ\n\n"
+                f"👑 Telegram-владелец: {tg_owner}\n"
+                f"👑 VK-владелец: {vk_owner}\n\n"
+                f"📱 Telegram-доступ: {tg_access}\n"
+                f"💬 VK-доступ: {vk_access}\n\n"
+                "Управление только владельцем VK:\n"
+                "/addadmin tg ID\n/addadmin vk ID\n/deladmin tg ID\n/deladmin vk ID"
+            )
+            await _answer(message, text_admins, _admin_panel_keyboard())
             return
 
         if normalized in {"⬅️ предыдущая", "➡️ следующая"} and is_admin("vk", user_id):
