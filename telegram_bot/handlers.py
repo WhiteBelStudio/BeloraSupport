@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+logger = logging.getLogger(__name__)
+
 from aiogram import F, Router
 from aiogram.filters import CommandStart
 from aiogram.fsm.context import FSMContext
@@ -116,11 +118,17 @@ async def apply_confirm(callback: CallbackQuery, state: FSMContext):
     await callback.message.answer(f"✅ Заявка <b>#{app_id}</b> отправлена администраторам.",parse_mode="HTML",reply_markup=main_keyboard())
     text=(f"🎫 <b>Новая заявка #{app_id}</b>\n\n👤 {data['name']}\n🎂 {data['age']}\n📍 {data['city']}\n💬 {data['reason']}\n⭐ {data['interests']}\n\nTelegram ID: <code>{user.id}</code>\nUsername: @{user.username or 'нет'}")
     recipient_ids = effective_admin_ids("telegram")
+    delivered = 0
     for admin_id in recipient_ids:
         try:
             await callback.bot.send_message(admin_id,text,parse_mode="HTML",reply_markup=admin_keyboard(app_id))
+            delivered += 1
         except Exception:
-            pass
+            logger.exception("Failed to notify Telegram admin %s about application #%s", admin_id, app_id)
+    if delivered == 0:
+        logger.error("No Telegram admin notifications delivered for application #%s; recipients=%s", app_id, sorted(recipient_ids))
+    else:
+        logger.info("Telegram application #%s notification delivered to %s/%s admins", app_id, delivered, len(recipient_ids))
 
 @router.callback_query(F.data == "apply_restart")
 async def restart(callback: CallbackQuery,state:FSMContext):
