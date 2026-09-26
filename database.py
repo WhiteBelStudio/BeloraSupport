@@ -131,6 +131,10 @@ async def clear_all_applications() -> int:
 
 
 async def ban_user(platform: str, user_id: int, reason: str, banned_by: int) -> bool:
+    platform = "telegram" if str(platform).lower() in {"tg", "telegram"} else "vk"
+    reason = str(reason).strip()
+    if not reason:
+        raise ValueError("Ban reason cannot be empty")
     async with aiosqlite.connect(DB_PATH) as db:
         cur = await db.execute("INSERT OR REPLACE INTO bans(platform,user_id,reason,banned_by,created_at) VALUES(?,?,?,?,?)", (platform, str(user_id), reason, str(banned_by), now()))
         await db.commit()
@@ -138,6 +142,7 @@ async def ban_user(platform: str, user_id: int, reason: str, banned_by: int) -> 
 
 
 async def unban_user(platform: str, user_id: int) -> bool:
+    platform = "telegram" if str(platform).lower() in {"tg", "telegram"} else "vk"
     async with aiosqlite.connect(DB_PATH) as db:
         cur = await db.execute("DELETE FROM bans WHERE platform=? AND user_id=?", (platform, str(user_id)))
         await db.commit()
@@ -145,6 +150,7 @@ async def unban_user(platform: str, user_id: int) -> bool:
 
 
 async def get_ban(platform: str, user_id: str | int):
+    platform = "telegram" if str(platform).lower() in {"tg", "telegram"} else "vk"
     async with aiosqlite.connect(DB_PATH) as db:
         db.row_factory = aiosqlite.Row
         cur = await db.execute("SELECT * FROM bans WHERE platform=? AND user_id=?", (platform, str(user_id)))
@@ -156,6 +162,8 @@ async def is_banned(platform: str, user_id: str | int) -> bool:
 
 
 async def list_bans(platform: str | None = None):
+    if platform is not None:
+        platform = "telegram" if str(platform).lower() in {"tg", "telegram"} else "vk"
     async with aiosqlite.connect(DB_PATH) as db:
         db.row_factory = aiosqlite.Row
         if platform:
