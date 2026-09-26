@@ -12,6 +12,7 @@ logger = logging.getLogger("BeloraSupport.VK")
 
 VK_STATES: dict[str, dict] = {}
 VK_ADMIN_PAGES: dict[str, dict[str, int]] = {}
+_VK_NOTIFICATION_FAILURES: list[tuple[int, str]] = []
 
 
 def _main_keyboard() -> str:
@@ -147,6 +148,7 @@ async def run_vk_bot() -> None:
                 },
             )
         except Exception:
+            _VK_NOTIFICATION_FAILURES.append((peer_id, text[:80]))
             logger.exception("❌ Failed to send VK message to peer_id=%s", peer_id)
 
     def _admin_panel_keyboard() -> str:
@@ -201,8 +203,16 @@ async def run_vk_bot() -> None:
             f"VK ID: {user_id}"
         )
         recipients = effective_admin_ids("vk")
+        delivered = 0
         for admin_id in recipients:
+            before = len(_VK_NOTIFICATION_FAILURES)
             await _send_vk(admin_id, text, _admin_keyboard(app_id))
+            if len(_VK_NOTIFICATION_FAILURES) == before:
+                delivered += 1
+        if delivered == 0:
+            logger.error("No VK admin notifications delivered for application #%s; recipients=%s", app_id, sorted(recipients))
+        else:
+            logger.info("VK application #%s notification delivered to %s/%s admins", app_id, delivered, len(recipients))
 
     async def _finish_application(message: Message, data: dict) -> None:
         user_id = int(message.from_id)
