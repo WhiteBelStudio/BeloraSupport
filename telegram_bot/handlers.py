@@ -244,7 +244,7 @@ async def ban_command(message: Message):
         try:
             await message.bot.send_message(user_id, f"🚫 <b>Доступ ограничен</b>\n\nПричина: {reason}", parse_mode="HTML")
         except Exception:
-            pass
+            logger.exception("Failed to notify Telegram user %s about ban", user_id)
     await message.answer(f"🚫 Пользователь <code>{user_id}</code> заблокирован.\nПлатформа: {platform}\nПричина: {reason}", parse_mode="HTML")
 
 @router.message(F.text.regexp(r"^/unban(?:\s|$)"))
@@ -261,7 +261,7 @@ async def unban_command(message: Message):
             try:
                 await message.bot.send_message(user_id, "✅ <b>Доступ восстановлен</b>\n\nОграничение с твоего аккаунта снято.", parse_mode="HTML")
             except Exception:
-                pass
+                logger.exception("Failed to notify Telegram user %s about unban", user_id)
         await message.answer(f"✅ Пользователь <code>{user_id}</code> разблокирован.", parse_mode="HTML")
     else:
         await message.answer("ℹ️ Такой пользователь не заблокирован.")
