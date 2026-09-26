@@ -175,6 +175,8 @@ async def add_admin_command(message: Message):
         return await message.answer("Использование: /addadmin tg ID или /addadmin vk ID")
     platform="telegram" if parts[1].lower() in {"tg","telegram"} else "vk"
     user_id=int(parts[2])
+    if user_id in __import__("config").owner_ids(platform):
+        return await message.answer("👑 Этот ID уже является владельцем и имеет полный доступ.")
     added = await add_admin(platform, user_id, message.from_user.id)
     register_admin(platform, user_id)
     if added:
@@ -393,7 +395,8 @@ async def panel_admins(callback: CallbackQuery):
         "Управление только владельцем:\n"
         "/addadmin tg ID\n/addadmin vk ID\n/deladmin tg ID\n/deladmin vk ID"
     )
-    await callback.message.edit_text(text, parse_mode="HTML", reply_markup=admin_panel_keyboard())
+    from .keyboards import admin_management_keyboard
+    await callback.message.edit_text(text, parse_mode="HTML", reply_markup=admin_management_keyboard())
 
 
 @router.callback_query(F.data.startswith("admin_add:"))
