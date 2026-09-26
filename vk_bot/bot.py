@@ -12,7 +12,6 @@ logger = logging.getLogger("BeloraSupport.VK")
 
 VK_STATES: dict[str, dict] = {}
 VK_ADMIN_PAGES: dict[str, dict[str, int]] = {}
-_VK_NOTIFICATION_FAILURES: list[tuple[int, str]] = []
 
 
 def _main_keyboard() -> str:
@@ -136,7 +135,7 @@ async def run_vk_bot() -> None:
             logger.warning("⚠️ VK keyboard unavailable (API 912); using text fallback")
             await message.answer(text)
 
-    async def _send_vk(peer_id: int, text: str, keyboard: str | None = None) -> None:
+    async def _send_vk(peer_id: int, text: str, keyboard: str | None = None) -> bool:
         try:
             await bot.api.request(
                 "messages.send",
@@ -147,9 +146,10 @@ async def run_vk_bot() -> None:
                     **({"keyboard": keyboard} if keyboard else {}),
                 },
             )
+            return True
         except Exception:
-            _VK_NOTIFICATION_FAILURES.append((peer_id, text[:80]))
             logger.exception("❌ Failed to send VK message to peer_id=%s", peer_id)
+            return False
 
     def _admin_panel_keyboard() -> str:
         keyboard = {
@@ -205,9 +205,7 @@ async def run_vk_bot() -> None:
         recipients = effective_admin_ids("vk")
         delivered = 0
         for admin_id in recipients:
-            before = len(_VK_NOTIFICATION_FAILURES)
-            await _send_vk(admin_id, text, _admin_keyboard(app_id))
-            if len(_VK_NOTIFICATION_FAILURES) == before:
+            if await _send_vk(admin_id, text, _admin_keyboard(app_id)):
                 delivered += 1
         if delivered == 0:
             logger.error("No VK admin notifications delivered for application #%s; recipients=%s", app_id, sorted(recipients))
