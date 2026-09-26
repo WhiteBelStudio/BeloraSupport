@@ -28,6 +28,7 @@ async def has_pending(platform: str, user_id: str) -> bool:
 
 
 async def create_application(platform: str, user_id: str, username: str | None, name: str, age: int, city: str, reason: str, interests: str) -> int:
+    platform = "telegram" if str(platform).lower() in {"tg", "telegram"} else "vk"
     timestamp = now()
     async with aiosqlite.connect(DB_PATH) as db:
         cur = await db.execute("INSERT INTO applications(platform,user_id,username,name,age,city,reason,interests,status,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,'pending',?,?)", (platform,user_id,username,name,age,city,reason,interests,timestamp,timestamp))
