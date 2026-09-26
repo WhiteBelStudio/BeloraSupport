@@ -54,7 +54,7 @@ async def rules_start(callback: CallbackQuery, state: FSMContext):
     await callback.answer()
     ban = await get_ban("telegram", callback.from_user.id)
     if ban:
-        return await callback.message.answer("🚫 <b>Доступ ограничен</b>\n\nПричина: " + ban["reason"], parse_mode="HTML")
+        return await callback.message.answer("🚫 <b>Доступ ограничен</b>\n\nПричина: " + html.escape(ban["reason"]), parse_mode="HTML")
     await state.clear()
     from .keyboards import rules_keyboard
     await callback.message.answer(RULES_TEXT, parse_mode="HTML", reply_markup=rules_keyboard())
@@ -105,7 +105,7 @@ async def form_interests(message: Message, state: FSMContext):
     value=(message.text or "").strip()
     if not 2 <= len(value) <= 1000: return await message.answer("Ответ должен быть от 2 до 1000 символов.")
     await state.update_data(interests=value); data=await state.get_data(); await state.set_state(ApplicationForm.confirm)
-    preview=(f"📋 <b>Предпросмотр заявки</b>\n\n👤 <b>Имя:</b> {data['name']}\n🎂 <b>Возраст:</b> {data['age']}\n📍 <b>Город:</b> {data['city']}\n💬 <b>Почему:</b> {data['reason']}\n⭐ <b>Интересы:</b> {data['interests']}\n\nВсё верно?")
+    preview=(f"📋 <b>Предпросмотр заявки</b>\n\n👤 <b>Имя:</b> {html.escape(data['name'])}\n🎂 <b>Возраст:</b> {data['age']}\n📍 <b>Город:</b> {html.escape(data['city'])}\n💬 <b>Почему:</b> {html.escape(data['reason'])}\n⭐ <b>Интересы:</b> {html.escape(data['interests'])}\n\nВсё верно?")
     await message.answer(preview, reply_markup=confirm_keyboard(), parse_mode="HTML")
 
 @router.callback_query(F.data == "apply_confirm", ApplicationForm.confirm)
@@ -118,7 +118,8 @@ async def apply_confirm(callback: CallbackQuery, state: FSMContext):
     app_id=await create_application("telegram",str(user.id),user.username,data["name"],data["age"],data["city"],data["reason"],data["interests"])
     await state.clear()
     await callback.message.answer(f"✅ Заявка <b>#{app_id}</b> отправлена администраторам.",parse_mode="HTML",reply_markup=main_keyboard())
-    text=(f"🎫 <b>Новая заявка #{app_id}</b>\n\n👤 {data['name']}\n🎂 {data['age']}\n📍 {data['city']}\n💬 {data['reason']}\n⭐ {data['interests']}\n\nTelegram ID: <code>{user.id}</code>\nUsername: @{user.username or 'нет'}")
+    username = html.escape(user.username) if user.username else "нет"
+    text=(f"🎫 <b>Новая заявка #{app_id}</b>\n\n👤 {html.escape(data['name'])}\n🎂 {data['age']}\n📍 {html.escape(data['city'])}\n💬 {html.escape(data['reason'])}\n⭐ {html.escape(data['interests'])}\n\nTelegram ID: <code>{user.id}</code>\nUsername: @{username}")
     recipient_ids = effective_admin_ids("telegram")
     delivered = 0
     for admin_id in recipient_ids:
@@ -242,7 +243,7 @@ async def ban_command(message: Message):
     await ban_user(platform, user_id, reason, message.from_user.id)
     if platform == "telegram":
         try:
-            await message.bot.send_message(user_id, f"🚫 <b>Доступ ограничен</b>\n\nПричина: {reason}", parse_mode="HTML")
+            await message.bot.send_message(user_id, f"🚫 <b>Доступ ограничен</b>\n\nПричина: {html.escape(reason)}", parse_mode="HTML")
         except Exception:
             logger.exception("Failed to notify Telegram user %s about ban", user_id)
     await message.answer(f"🚫 Пользователь <code>{user_id}</code> заблокирован.\nПлатформа: {platform}\nПричина: {reason}", parse_mode="HTML")
@@ -275,7 +276,7 @@ async def banned_command(message: Message):
         return await message.answer("🚫 Заблокированных пользователей нет.")
     lines = ["🚫 <b>Заблокированные пользователи</b>", ""]
     for row in rows[:50]:
-        lines.append(f"• <code>{row['user_id']}</code> — {row['platform']} — {row['reason']}")
+        lines.append(f"• <code>{row['user_id']}</code> — {html.escape(row['platform'])} — {html.escape(row['reason'])}")
     await message.answer("\n".join(lines), parse_mode="HTML")
 
 # ===== Telegram admin panel =====
