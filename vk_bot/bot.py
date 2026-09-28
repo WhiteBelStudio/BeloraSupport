@@ -281,22 +281,12 @@ async def run_vk_bot() -> None:
             user_id = int(payload.get("from_id", 0) or 0)
             peer_id = int(payload.get("peer_id", user_id) or user_id)
             text = str(payload.get("text", "") or "").strip()
+        except Exception:
+            logger.exception("❌ Failed to parse VK message_new event")
+            return
 
-            if not user_id:
-                logger.warning("⚠️ VK message_new has no from_id: %r", payload)
-                return
-
-            message = _RawVKMessage(bot, user_id, peer_id, text)
-            normalized = text.lower()
-
-            logger.info(
-                "📩 VK message received: peer_id=%s from_id=%s text=%r",
-                peer_id,
-                user_id,
-                text,
-            )
         if not user_id:
-            logger.warning("⚠️ VK message_new event has no from_id: %r", event)
+            logger.warning("⚠️ VK message_new event has no from_id: %r", payload)
             return
 
         message = _RawVKMessage(bot, user_id, peer_id, text)
@@ -304,7 +294,7 @@ async def run_vk_bot() -> None:
 
         logger.info(
             "📩 VK message received: peer_id=%s from_id=%s text=%r",
-            getattr(message, "peer_id", None),
+            peer_id,
             user_id,
             text,
         )
