@@ -20,13 +20,13 @@ async def support_menu(message: Message, state: FSMContext):
     existing = await get_open_ticket_by_user("telegram", message.from_user.id)
     if existing:
         return await message.answer(
-            f"🎫 У тебя уже открыт тикет <b>#{existing['id']}</b>.\\n\\nТема: {html.escape(existing['subject'])}",
+            f"🎫 У тебя уже открыт тикет <b>#{existing['id']}</b>.\n\nТема: {html.escape(existing['subject'])}",
             parse_mode="HTML",
             reply_markup=ticket_keyboard(existing["id"]),
         )
     await state.clear()
     await state.set_state(TicketForm.subject)
-    await message.answer("🎫 <b>Создание тикета</b>\\n\\nНапиши тему обращения одним сообщением.", parse_mode="HTML")
+    await message.answer("🎫 <b>Создание тикета</b>\n\nНапиши тему обращения одним сообщением.", parse_mode="HTML")
 
 
 @router.callback_query(F.data=="support")
@@ -121,7 +121,7 @@ async def ticket_user_reply(message: Message, state: FSMContext):
     if not 1<=len(text)<=3000:
         return await message.answer("Сообщение должно быть от 1 до 3000 символов.")
     await add_ticket_message(int(ticket_id),"telegram","user",message.from_user.id,text)
-    notification=f"📩 <b>Новое сообщение в тикете #{ticket_id}</b>\\n\\n👤 <code>{message.from_user.id}</code>\\n📌 {html.escape(ticket['subject'])}\\n\\n{html.escape(text)}"
+    notification=f"📩 <b>Новое сообщение в тикете #{ticket_id}</b>\n\n👤 <code>{message.from_user.id}</code>\n📌 {html.escape(ticket['subject'])}\n\n{html.escape(text)}"
     for admin_id in effective_admin_ids("telegram"):
         try:
             await message.bot.send_message(admin_id,notification,parse_mode="HTML",reply_markup=ticket_admin_keyboard(int(ticket_id)))
