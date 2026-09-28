@@ -6,10 +6,8 @@ import aiosqlite
 
 DB_PATH = os.getenv("DATABASE_PATH", "data/belora_support.db")
 
-
 def now() -> str:
     return datetime.now(timezone.utc).isoformat()
-
 
 async def init_db() -> None:
     os.makedirs(os.path.dirname(DB_PATH) or ".", exist_ok=True)
@@ -18,14 +16,15 @@ async def init_db() -> None:
         await db.execute("CREATE INDEX IF NOT EXISTS idx_app_user_status ON applications(platform,user_id,status)")
         await db.execute("CREATE TABLE IF NOT EXISTS admins (platform TEXT NOT NULL, user_id TEXT NOT NULL, added_by TEXT NOT NULL, created_at TEXT NOT NULL, PRIMARY KEY(platform,user_id))")
         await db.execute("CREATE TABLE IF NOT EXISTS bans (platform TEXT NOT NULL, user_id TEXT NOT NULL, reason TEXT NOT NULL, banned_by TEXT NOT NULL, created_at TEXT NOT NULL, PRIMARY KEY(platform,user_id))")
+        await db.execute("CREATE TABLE IF NOT EXISTS conversations (platform TEXT NOT NULL, application_id INTEGER NOT NULL, admin_id TEXT NOT NULL, user_id TEXT NOT NULL, active INTEGER NOT NULL DEFAULT 1, started_at TEXT NOT NULL, ended_at TEXT, PRIMARY KEY(platform, application_id))")
+        await db.execute("CREATE INDEX IF NOT EXISTS idx_conversations_admin ON conversations(platform,admin_id,active)")
+        await db.execute("CREATE INDEX IF NOT EXISTS idx_conversations_user ON conversations(platform,user_id,active)")
         await db.commit()
-
 
 async def has_pending(platform: str, user_id: str) -> bool:
     async with aiosqlite.connect(DB_PATH) as db:
         cur = await db.execute("SELECT 1 FROM applications WHERE platform=? AND user_id=? AND status='pending' LIMIT 1", (platform, user_id))
         return await cur.fetchone() is not None
-
 
 async def create_application(platform: str, user_id: str, username: str | None, name: str, age: int, city: str, reason: str, interests: str) -> int:
     platform = "telegram" if str(platform).lower() in {"tg", "telegram"} else "vk"
@@ -35,13 +34,11 @@ async def create_application(platform: str, user_id: str, username: str | None, 
         await db.commit()
         return int(cur.lastrowid)
 
-
 async def get_application(application_id: int):
     async with aiosqlite.connect(DB_PATH) as db:
         db.row_factory = aiosqlite.Row
         cur = await db.execute("SELECT * FROM applications WHERE id=?", (application_id,))
         return await cur.fetchone()
-
 
 async def set_status(application_id: int, status: str, reject_reason: str | None = None) -> bool:
     async with aiosqlite.connect(DB_PATH) as db:
@@ -49,23 +46,16 @@ async def set_status(application_id: int, status: str, reject_reason: str | None
         await db.commit()
         return cur.rowcount > 0
 
-
 async def add_admin(platform: str, user_id: int, added_by: int) -> bool:
     platform = "telegram" if str(platform).lower() in {"tg", "telegram"} else "vk"
     user_id = int(user_id)
     async with aiosqlite.connect(DB_PATH) as db:
-        cur = await db.execute(
-            "INSERT OR IGNORE INTO admins(platform,user_id,added_by,created_at) VALUES(?,?,?,?)",
-            (platform, str(user_id), str(added_by), now()),
-        )
+        cur = await db.execute("INSERT OR IGNORE INTO admins(platform,user_id,added_by,created_at) VALUES(?,?,?,?)", (platform, str(user_id), str(added_by), now()))
         await db.commit()
         added = cur.rowcount > 0
-    # Always synchronize the in-memory authorization cache, even when the row
-    # already existed. This makes granting/re-granting rights deterministic.
     from config import register_admin
     register_admin(platform, user_id)
     return added
-
 
 async def remove_admin(platform: str, user_id: int) -> bool:
     platform = "telegram" if str(platform).lower() in {"tg", "telegram"} else "vk"
@@ -78,7 +68,6 @@ async def remove_admin(platform: str, user_id: int) -> bool:
     unregister_admin(platform, user_id)
     return removed
 
-
 async def list_admins(platform: str):
     platform = "telegram" if str(platform).lower() in {"tg", "telegram"} else "vk"
     async with aiosqlite.connect(DB_PATH) as db:
@@ -86,88 +75,72 @@ async def list_admins(platform: str):
         cur = await db.execute("SELECT * FROM admins WHERE platform=? ORDER BY created_at", (platform,))
         return await cur.fetchall()
 
-
 async def list_applications(status: str | None = None, limit: int = 20, offset: int = 0):
-    limit = max(1, min(int(limit), 100))
-    offset = max(0, int(offset))
+    limit = max(1, min(int(limit), 100)); offset = max(0, int(offset))
     async with aiosqlite.connect(DB_PATH) as db:
         db.row_factory = aiosqlite.Row
-        if status:
-            cur = await db.execute("SELECT * FROM applications WHERE status=? ORDER BY id DESC LIMIT ? OFFSET ?", (status, limit, offset))
-        else:
-            cur = await db.execute("SELECT * FROM applications ORDER BY id DESC LIMIT ? OFFSET ?", (limit, offset))
+        if status: cur = await db.execute("SELECT * FROM applications WHERE status=? ORDER BY id DESC LIMIT ? OFFSET ?", (status, limit, offset))
+        else: cur = await db.execute("SELECT * FROM applications ORDER BY id DESC LIMIT ? OFFSET ?", (limit, offset))
         return await cur.fetchall()
-
 
 async def count_applications(status: str | None = None) -> int:
     async with aiosqlite.connect(DB_PATH) as db:
-        if status:
-            cur = await db.execute("SELECT COUNT(*) FROM applications WHERE status=?", (status,))
-        else:
-            cur = await db.execute("SELECT COUNT(*) FROM applications")
-        row = await cur.fetchone()
-        return int(row[0])
-
+        cur = await db.execute("SELECT COUNT(*) FROM applications" if not status else "SELECT COUNT(*) FROM applications WHERE status=?", (() if not status else (status,)))
+        row = await cur.fetchone(); return int(row[0])
 
 async def application_stats() -> dict[str, int]:
     async with aiosqlite.connect(DB_PATH) as db:
-        cur = await db.execute("SELECT status, COUNT(*) FROM applications GROUP BY status")
-        rows = await cur.fetchall()
-    result = {"pending": 0, "approved": 0, "rejected": 0, "total": 0}
-    for status, count in rows:
-        result[str(status)] = int(count)
-        result["total"] += int(count)
+        cur = await db.execute("SELECT status, COUNT(*) FROM applications GROUP BY status"); rows = await cur.fetchall()
+    result={"pending":0,"approved":0,"rejected":0,"total":0}
+    for status,count in rows: result[str(status)]=int(count); result["total"]+=int(count)
     return result
-
 
 async def clear_all_applications() -> int:
     async with aiosqlite.connect(DB_PATH) as db:
-        cur = await db.execute("SELECT COUNT(*) FROM applications")
-        row = await cur.fetchone()
-        count = int(row[0]) if row else 0
-        await db.execute("DELETE FROM applications")
-        await db.commit()
-        return count
-
+        cur=await db.execute("SELECT COUNT(*) FROM applications"); row=await cur.fetchone(); count=int(row[0]) if row else 0
+        await db.execute("DELETE FROM applications"); await db.commit(); return count
 
 async def ban_user(platform: str, user_id: int, reason: str, banned_by: int) -> bool:
-    platform = "telegram" if str(platform).lower() in {"tg", "telegram"} else "vk"
-    reason = str(reason).strip()
-    if not reason:
-        raise ValueError("Ban reason cannot be empty")
+    platform="telegram" if str(platform).lower() in {"tg","telegram"} else "vk"; reason=str(reason).strip()
+    if not reason: raise ValueError("Ban reason cannot be empty")
     async with aiosqlite.connect(DB_PATH) as db:
-        cur = await db.execute("INSERT OR REPLACE INTO bans(platform,user_id,reason,banned_by,created_at) VALUES(?,?,?,?,?)", (platform, str(user_id), reason, str(banned_by), now()))
-        await db.commit()
-        return cur.rowcount > 0
-
+        cur=await db.execute("INSERT OR REPLACE INTO bans(platform,user_id,reason,banned_by,created_at) VALUES(?,?,?,?,?)",(platform,str(user_id),reason,str(banned_by),now())); await db.commit(); return cur.rowcount>0
 
 async def unban_user(platform: str, user_id: int) -> bool:
-    platform = "telegram" if str(platform).lower() in {"tg", "telegram"} else "vk"
+    platform="telegram" if str(platform).lower() in {"tg","telegram"} else "vk"
     async with aiosqlite.connect(DB_PATH) as db:
-        cur = await db.execute("DELETE FROM bans WHERE platform=? AND user_id=?", (platform, str(user_id)))
-        await db.commit()
-        return cur.rowcount > 0
-
+        cur=await db.execute("DELETE FROM bans WHERE platform=? AND user_id=?",(platform,str(user_id))); await db.commit(); return cur.rowcount>0
 
 async def get_ban(platform: str, user_id: str | int):
-    platform = "telegram" if str(platform).lower() in {"tg", "telegram"} else "vk"
+    platform="telegram" if str(platform).lower() in {"tg","telegram"} else "vk"
     async with aiosqlite.connect(DB_PATH) as db:
-        db.row_factory = aiosqlite.Row
-        cur = await db.execute("SELECT * FROM bans WHERE platform=? AND user_id=?", (platform, str(user_id)))
-        return await cur.fetchone()
+        db.row_factory=aiosqlite.Row; cur=await db.execute("SELECT * FROM bans WHERE platform=? AND user_id=?",(platform,str(user_id))); return await cur.fetchone()
 
-
-async def is_banned(platform: str, user_id: str | int) -> bool:
-    return await get_ban(platform, user_id) is not None
-
+async def is_banned(platform: str, user_id: str | int) -> bool: return await get_ban(platform,user_id) is not None
 
 async def list_bans(platform: str | None = None):
-    if platform is not None:
-        platform = "telegram" if str(platform).lower() in {"tg", "telegram"} else "vk"
+    if platform is not None: platform="telegram" if str(platform).lower() in {"tg","telegram"} else "vk"
     async with aiosqlite.connect(DB_PATH) as db:
-        db.row_factory = aiosqlite.Row
-        if platform:
-            cur = await db.execute("SELECT * FROM bans WHERE platform=? ORDER BY created_at DESC", (platform,))
-        else:
-            cur = await db.execute("SELECT * FROM bans ORDER BY created_at DESC")
-        return await cur.fetchall()
+        db.row_factory=aiosqlite.Row
+        cur=await db.execute("SELECT * FROM bans WHERE platform=? ORDER BY created_at DESC" if platform else "SELECT * FROM bans ORDER BY created_at DESC",((platform,) if platform else ())); return await cur.fetchall()
+
+async def start_conversation(platform: str, application_id: int, admin_id: int, user_id: int) -> bool:
+    platform="telegram" if str(platform).lower() in {"tg","telegram"} else "vk"
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute("UPDATE conversations SET active=0, ended_at=? WHERE platform=? AND admin_id=? AND active=1",(now(),platform,str(admin_id)))
+        await db.execute("INSERT OR REPLACE INTO conversations(platform,application_id,admin_id,user_id,active,started_at,ended_at) VALUES(?,?,?,?,1,?,NULL)",(platform,int(application_id),str(admin_id),str(user_id),now())); await db.commit(); return True
+
+async def get_active_conversation_by_admin(platform: str, admin_id: int):
+    platform="telegram" if str(platform).lower() in {"tg","telegram"} else "vk"
+    async with aiosqlite.connect(DB_PATH) as db:
+        db.row_factory=aiosqlite.Row; cur=await db.execute("SELECT * FROM conversations WHERE platform=? AND admin_id=? AND active=1 LIMIT 1",(platform,str(admin_id))); return await cur.fetchone()
+
+async def get_active_conversation_by_user(platform: str, user_id: int):
+    platform="telegram" if str(platform).lower() in {"tg","telegram"} else "vk"
+    async with aiosqlite.connect(DB_PATH) as db:
+        db.row_factory=aiosqlite.Row; cur=await db.execute("SELECT * FROM conversations WHERE platform=? AND user_id=? AND active=1 LIMIT 1",(platform,str(user_id))); return await cur.fetchone()
+
+async def close_conversation(platform: str, application_id: int) -> bool:
+    platform="telegram" if str(platform).lower() in {"tg","telegram"} else "vk"
+    async with aiosqlite.connect(DB_PATH) as db:
+        cur=await db.execute("UPDATE conversations SET active=0, ended_at=? WHERE platform=? AND application_id=? AND active=1",(now(),platform,int(application_id))); await db.commit(); return cur.rowcount>0
