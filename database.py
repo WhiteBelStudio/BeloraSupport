@@ -47,7 +47,7 @@ async def set_status(application_id: int,status: str,reject_reason: str|None=Non
         cur=await db.execute("UPDATE applications SET status=?,reject_reason=?,updated_at=? WHERE id=? AND status='pending'",(status,reject_reason,now(),application_id)); await db.commit(); return cur.rowcount>0
 
 async def add_admin(platform: str,user_id: int,added_by: int)->bool:
-    platform=_platform(platform); async with_dummy=0
+    platform=_platform(platform)
     async with aiosqlite.connect(DB_PATH) as db:
         cur=await db.execute("INSERT OR IGNORE INTO admins(platform,user_id,added_by,created_at) VALUES(?,?,?,?)",(platform,str(user_id),str(added_by),now())); await db.commit(); added=cur.rowcount>0
     from config import register_admin; register_admin(platform,user_id); return added
