@@ -296,6 +296,26 @@ async def run_vk_bot() -> None:
                 await _answer(message, "🎫 ОТКРЫТЫЕ ТИКЕТЫ\\n\\n" + "\\n".join(f"#{t['id']} • {t['subject'][:45]} • ID {t['user_id']}" for t in tickets), _admin_panel_keyboard())
             return
 
+        if normalized.startswith("📖 тикет #") and not is_admin("vk", user_id):
+            try: ticket_id=int(normalized.split("#",1)[1])
+            except ValueError: ticket_id=0
+            ticket=await get_ticket(ticket_id) if ticket_id else None
+            if not ticket or int(ticket["user_id"])!=user_id:
+                await _answer(message,"❌ Тикет не найден.",main_keyboard); return
+            messages=await list_ticket_messages(ticket_id)
+            lines=[f"🎫 Тикет #{ticket_id}",f"📌 {ticket['subject']}",f"Статус: {ticket['status']}",""]
+            lines += [("👤 Ты: " if row["sender_type"]=="user" else "🛠 Администратор: ")+row["text"] for row in messages]
+            await _answer(message,"\\n".join(lines),_vk_ticket_user_keyboard(ticket_id)); return
+
+        if normalized.startswith("💬 ответить в тикет #") and not is_admin("vk", user_id):
+            try: ticket_id=int(normalized.split("#",1)[1])
+            except ValueError: ticket_id=0
+            ticket=await get_ticket(ticket_id) if ticket_id else None
+            if not ticket or int(ticket["user_id"])!=user_id or ticket["status"]!="open":
+                await _answer(message,"❌ Тикет закрыт или не найден.",main_keyboard); return
+            VK_STATES[str(user_id)]={"step":"ticket_reply","ticket_id":ticket_id}
+            await _answer(message,f"💬 Напиши сообщение в тикет #{ticket_id}.",main_keyboard); return
+
         if is_admin("vk", user_id) and normalized.startswith("📖 тикет #"):
             try: ticket_id=int(normalized.split("#",1)[1])
             except ValueError: ticket_id=0
