@@ -250,24 +250,6 @@ async def run_vk_bot() -> None:
         )
         await _send_application_to_admins(app_id, data, user_id)
 
-    @bot.on.raw_event("message_new")
-    async def _log_vk_message_event(event):
-        try:
-            logger.info("📡 VK raw message_new type=%s value=%r", type(event).__name__, event)
-        except Exception:
-            logger.exception("Failed to log raw VK message event")
-
-    class _RawVKMessage:
-        def __init__(self, bot_instance, from_id: int, peer_id: int, text: str):
-            self.bot = bot_instance
-            self.from_id = from_id
-            self.peer_id = peer_id
-            self.text = text
-
-        async def answer(self, text: str, keyboard: str | None = None):
-            if not await _send_vk(self.peer_id, text, keyboard):
-                raise RuntimeError(f"VK message delivery failed for peer_id={self.peer_id}")
-
     @bot.on.message()
     async def handle(message: Message):
         try:
