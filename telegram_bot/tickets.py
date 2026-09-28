@@ -95,10 +95,6 @@ async def ticket_reply_user_start(callback: CallbackQuery, state: FSMContext):
     await state.clear(); await state.update_data(user_ticket_id=ticket_id); await state.set_state(TicketForm.message)
     await callback.answer(); await callback.message.answer(f"💬 Напиши сообщение в тикет <b>#{ticket_id}</b>.",parse_mode="HTML")
 
-@router.message(FSMContext)
-async def _noop_ticket_guard(message: Message, state: FSMContext):
-    return
-
 @router.message(F.text=="/tickets")
 async def tickets_command(message:Message):
     if not is_admin("telegram",message.from_user.id):return
