@@ -10,7 +10,7 @@ def confirm_keyboard():
 
 
 def admin_keyboard(app_id: int):
-    return InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="✅ Одобрить", callback_data=f"app_approve:{app_id}"),InlineKeyboardButton(text="❌ Отклонить", callback_data=f"app_reject:{app_id}")]])
+    return InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="✅ Одобрить", callback_data=f"app_approve:{app_id}"),InlineKeyboardButton(text="❌ Отклонить", callback_data=f"app_reject:{app_id}")],[InlineKeyboardButton(text="💬 Написать пользователю", callback_data=f"app_chat:{app_id}")]])
 
 
 def admin_panel_keyboard():
@@ -34,8 +34,13 @@ def admin_list_keyboard(apps, page: int, total: int, prefix: str):
 def application_admin_keyboard(app_id: int, status: str = "pending"):
     rows=[]
     if status=="pending": rows.append([InlineKeyboardButton(text="✅ Одобрить",callback_data=f"app_approve:{app_id}"),InlineKeyboardButton(text="❌ Отклонить",callback_data=f"app_reject:{app_id}")])
+    rows.append([InlineKeyboardButton(text="💬 Написать пользователю",callback_data=f"app_chat:{app_id}")])
     rows.append([InlineKeyboardButton(text="⬅️ К списку",callback_data="panel_pending:0"),InlineKeyboardButton(text="🏠 Панель",callback_data="panel_home")])
     return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+def chat_keyboard(app_id: int):
+    return InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="🔴 Завершить переписку", callback_data=f"app_chat_close:{app_id}")],[InlineKeyboardButton(text="⬅️ К заявке", callback_data=f"panel_app:{app_id}")]])
 
 
 def rules_keyboard():
