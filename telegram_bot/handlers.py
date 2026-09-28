@@ -37,7 +37,7 @@ async def start(message: Message, state: FSMContext):
     ban = await get_ban("telegram", message.from_user.id)
     if ban:
         return await message.answer("🚫 <b>Доступ ограничен</b>\n\nПричина: " + ban["reason"], parse_mode="HTML")
-    await message.answer("👋 Добро пожаловать в фан-клуб!\n\nЗдесь можно подать заявку на вступление.", reply_markup=main_keyboard())
+    await message.answer("👋 Добро пожаловать в фан-клуб!\n\nЗдесь можно подать заявку на вступление.", reply_markup=main_keyboard(is_admin("telegram", message.from_user.id)))
 
 RULES_TEXT = (
     "📋 <b>Правила создания анкеты</b>\n\n"
@@ -72,6 +72,41 @@ async def rules_accept(callback: CallbackQuery, state: FSMContext):
     await state.clear()
     await state.set_state(ApplicationForm.name)
     await callback.message.answer("1/5. Как тебя зовут или как к тебе обращаться?")
+
+@router.message(F.text == "🎫 Подать заявку")
+async def menu_apply(message: Message, state: FSMContext):
+    ban = await get_ban("telegram", message.from_user.id)
+    if ban:
+        return await message.answer("🚫 Доступ ограничен.\\n\\nПричина: " + html.escape(ban["reason"]), parse_mode="HTML")
+    if await has_pending("telegram", str(message.from_user.id)):
+        return await message.answer("⏳ У тебя уже есть заявка на рассмотрении.", reply_markup=main_keyboard(is_admin("telegram", message.from_user.id)))
+    await state.clear()
+    from .keyboards import rules_keyboard
+    await message.answer(RULES_TEXT, parse_mode="HTML", reply_markup=rules_keyboard())
+
+
+@router.message(F.text == "📋 Правила")
+async def menu_rules(message: Message, state: FSMContext):
+    await state.clear()
+    from .keyboards import rules_keyboard
+    await message.answer(RULES_TEXT, parse_mode="HTML", reply_markup=rules_keyboard())
+
+
+@router.message(F.text == "📋 Моя заявка")
+async def menu_my_application(message: Message):
+    await message.answer(
+        "⏳ Твоя заявка на рассмотрении." if await has_pending("telegram", str(message.from_user.id))
+        else "ℹ️ Активной заявки нет.",
+        reply_markup=main_keyboard(is_admin("telegram", message.from_user.id)),
+    )
+
+
+@router.message(F.text == "🛠 Админ-панель")
+async def menu_admin_panel(message: Message):
+    if not is_admin("telegram", message.from_user.id):
+        return await message.answer("⛔ Доступ только для администраторов.")
+    await message.answer(_panel_text(await application_stats()), parse_mode="HTML", reply_markup=admin_panel_keyboard())
+
 
 @router.message(ApplicationForm.name)
 async def form_name(message: Message, state: FSMContext):
