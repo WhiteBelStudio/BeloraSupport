@@ -11,8 +11,9 @@ from aiogram.fsm.state import State, StatesGroup
 from aiogram.types import CallbackQuery, Message
 
 from config import admin_ids, effective_admin_ids, is_admin, is_owner, register_admin, unregister_admin
-from database import add_admin, application_stats, ban_user, count_applications, create_application, get_application, get_ban, has_pending, is_banned, list_admins, list_applications, list_bans, remove_admin, set_status, unban_user
+from database import add_admin, application_stats, ban_user, count_applications, create_application, get_application, get_ban, has_pending, is_banned, list_admins, list_applications, list_bans, remove_admin, set_status, unban_user, count_tickets, get_ticket, list_tickets, list_ticket_messages
 from .keyboards import admin_keyboard, admin_list_keyboard, admin_panel_keyboard, application_admin_keyboard, confirm_keyboard, main_keyboard
+from .ticket_keyboards import ticket_admin_keyboard
 
 router = Router()
 
@@ -385,6 +386,27 @@ async def panel_application(callback: CallbackQuery):
         f"🕒 <b>Создана:</b> {html.escape(app['created_at'])}"
     )
     await callback.message.edit_text(text, parse_mode="HTML", reply_markup=application_admin_keyboard(app_id, app["status"]))
+
+
+@router.callback_query(F.data.startswith("tickets:"))
+async def panel_tickets(callback: CallbackQuery):
+    if not is_admin("telegram", callback.from_user.id):
+        return await callback.answer("Нет доступа.", show_alert=True)
+    await callback.answer()
+    page = max(0, int(callback.data.split(":", 1)[1]))
+    total = await count_tickets("open")
+    tickets = await list_tickets("open", limit=10, offset=page * 10)
+    if not tickets:
+        return await callback.message.edit_text("🎫 <b>Открытых тикетов нет.</b>", parse_mode="HTML", reply_markup=admin_panel_keyboard())
+    lines = ["🎫 <b>Открытые тикеты</b>", f"Страница {page + 1}", "", "Выбери тикет:"]
+    from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
+    rows = [[InlineKeyboardButton(text=f"#{t['id']} • {t['subject'][:45]}", callback_data=f"ticket_open:{t['id']}")] for t in tickets]
+    nav=[]
+    if page>0: nav.append(InlineKeyboardButton(text="⬅️", callback_data=f"tickets:{page-1}"))
+    if (page+1)*10<total: nav.append(InlineKeyboardButton(text="➡️", callback_data=f"tickets:{page+1}"))
+    if nav: rows.append(nav)
+    rows.append([InlineKeyboardButton(text="🏠 Панель", callback_data="panel_home")])
+    await callback.message.edit_text("\\n".join(lines), parse_mode="HTML", reply_markup=InlineKeyboardMarkup(inline_keyboard=rows))
 
 
 @router.callback_query(F.data == "panel_admins")
