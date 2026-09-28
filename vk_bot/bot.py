@@ -250,6 +250,19 @@ async def run_vk_bot() -> None:
         )
         await _send_application_to_admins(app_id, data, user_id)
 
+    @bot.on.raw_event("message_new")
+    async def _log_vk_message_event(event):
+        try:
+            obj = event.get("object", event) if isinstance(event, dict) else event
+            logger.info(
+                "📡 VK message_new event received: from_id=%s peer_id=%s text=%r",
+                obj.get("from_id") if isinstance(obj, dict) else getattr(obj, "from_id", None),
+                obj.get("peer_id") if isinstance(obj, dict) else getattr(obj, "peer_id", None),
+                obj.get("text") if isinstance(obj, dict) else getattr(obj, "text", None),
+            )
+        except Exception:
+            logger.exception("Failed to log raw VK message_new event")
+
     @bot.on.message()
     async def handle(message: Message):
         user_id = int(getattr(message, "from_id", 0) or 0)
