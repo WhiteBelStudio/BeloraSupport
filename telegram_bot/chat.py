@@ -24,10 +24,7 @@ async def start_application_chat(callback: CallbackQuery):
     user_id = int(app["user_id"])
     await start_conversation("telegram", app_id, callback.from_user.id, user_id)
     try:
-        await callback.bot.send_message(
-            user_id,
-            f"💬 Администратор начал переписку по заявке #{app_id}.\n\nМожешь отправить сообщение прямо сюда — оно будет передано администратору.",
-        )
+        await callback.bot.send_message(user_id, f"💬 Администратор начал переписку по заявке #{app_id}.\n\nМожешь отправить сообщение прямо сюда — оно будет передано администратору.")
     except Exception:
         await close_conversation("telegram", app_id)
         logger.exception("Failed to start Telegram application chat #%s", app_id)
@@ -50,13 +47,8 @@ async def close_application_chat(callback: CallbackQuery):
         except Exception:
             logger.exception("Failed to notify Telegram user about closed chat #%s", app_id)
     await callback.answer("Переписка завершена")
-    await callback.message.edit_reply_markup(reply_markup=application_admin_keyboard(app_id, app["status"] if app else "pending"))
-
-
-@router.message(F.text.startswith("/"))
-async def ignore_commands_in_chat(message: Message):
-    # Commands are handled by the normal bot handlers, not forwarded to users.
-    return None
+    if app:
+        await callback.message.edit_reply_markup(reply_markup=application_admin_keyboard(app_id, app["status"]))
 
 
 @router.message()
@@ -69,11 +61,7 @@ async def route_active_chat_message(message: Message):
         conversation = await get_active_conversation_by_admin("telegram", user.id)
         if conversation:
             try:
-                await message.bot.copy_message(
-                    chat_id=int(conversation["user_id"]),
-                    from_chat_id=message.chat.id,
-                    message_id=message.message_id,
-                )
+                await message.bot.copy_message(chat_id=int(conversation["user_id"]), from_chat_id=message.chat.id, message_id=message.message_id)
                 await message.answer("📨 Доставлено пользователю.")
             except Exception:
                 logger.exception("Failed to relay Telegram admin message")
@@ -83,11 +71,7 @@ async def route_active_chat_message(message: Message):
     conversation = await get_active_conversation_by_user("telegram", user.id)
     if conversation:
         try:
-            await message.bot.copy_message(
-                chat_id=int(conversation["admin_id"]),
-                from_chat_id=message.chat.id,
-                message_id=message.message_id,
-            )
+            await message.bot.copy_message(chat_id=int(conversation["admin_id"]), from_chat_id=message.chat.id, message_id=message.message_id)
             await message.answer("📨 Сообщение передано администратору.")
         except Exception:
             logger.exception("Failed to relay Telegram user message")
