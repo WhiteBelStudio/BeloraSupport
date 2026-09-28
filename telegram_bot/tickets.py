@@ -15,6 +15,20 @@ class TicketForm(StatesGroup):
 class AdminTicketForm(StatesGroup):
     message=State()
 
+@router.message(F.text == "🆘 Техподдержка")
+async def support_menu(message: Message, state: FSMContext):
+    existing = await get_open_ticket_by_user("telegram", message.from_user.id)
+    if existing:
+        return await message.answer(
+            f"🎫 У тебя уже открыт тикет <b>#{existing['id']}</b>.\\n\\nТема: {html.escape(existing['subject'])}",
+            parse_mode="HTML",
+            reply_markup=ticket_keyboard(existing["id"]),
+        )
+    await state.clear()
+    await state.set_state(TicketForm.subject)
+    await message.answer("🎫 <b>Создание тикета</b>\\n\\nНапиши тему обращения одним сообщением.", parse_mode="HTML")
+
+
 @router.callback_query(F.data=="support")
 async def support_start(callback:CallbackQuery,state:FSMContext):
     await callback.answer(); existing=await get_open_ticket_by_user("telegram",callback.from_user.id)
