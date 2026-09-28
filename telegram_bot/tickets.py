@@ -1,5 +1,6 @@
 from __future__ import annotations
 import logging
+import html
 from aiogram import F, Router
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
@@ -32,7 +33,7 @@ async def ticket_message(message:Message,state:FSMContext):
     if not 3<=len(text)<=3000:return await message.answer("Сообщение должно быть от 3 до 3000 символов.")
     data=await state.get_data(); user=message.from_user; ticket_id=await create_ticket("telegram",user.id,user.username,data["subject"]); await add_ticket_message(ticket_id,"telegram","user",user.id,text); await state.clear()
     await message.answer(f"✅ Тикет <b>#{ticket_id}</b> создан.\n\nАдминистратор ответит сюда, когда рассмотрит обращение.",parse_mode="HTML",reply_markup=ticket_keyboard(ticket_id))
-    notification=f"🎫 <b>Новый тикет #{ticket_id}</b>\n\n👤 {user.full_name}\n🆔 <code>{user.id}</code>\n📌 {data['subject']}\n\n{text}"
+    notification=f"🎫 <b>Новый тикет #{ticket_id}</b>\n\n👤 {html.escape(user.full_name)}\n🆔 <code>{user.id}</code>\n📌 {html.escape(data['subject'])}\n\n{html.escape(text)}"
     for admin_id in effective_admin_ids("telegram"):
         try: await message.bot.send_message(admin_id,notification,parse_mode="HTML",reply_markup=ticket_admin_keyboard(ticket_id))
         except Exception: logger.exception("Failed to notify admin %s about ticket #%s",admin_id,ticket_id)
@@ -74,7 +75,7 @@ async def admin_ticket_message(message:Message,state:FSMContext):
     text=(message.text or "").strip()
     if not text:return await message.answer("Напиши текст ответа.")
     await assign_ticket(int(ticket_id),message.from_user.id);await add_ticket_message(int(ticket_id),"telegram","admin",message.from_user.id,text)
-    try:await message.bot.send_message(int(ticket["user_id"]),f"💬 <b>Ответ по тикету #{ticket_id}</b>\n\n{text}",parse_mode="HTML",reply_markup=ticket_keyboard(int(ticket_id)))
+    try:await message.bot.send_message(int(ticket["user_id"]),f"💬 <b>Ответ по тикету #{ticket_id}</b>\n\n{html.escape(text)}",parse_mode="HTML",reply_markup=ticket_keyboard(int(ticket_id)))
     except Exception:logger.exception("Failed to send ticket reply");return await message.answer("❌ Не удалось отправить ответ пользователю.")
     await state.clear();await message.answer("📨 Ответ отправлен.")
 
@@ -85,6 +86,18 @@ async def ticket_my(callback:CallbackQuery):
     messages=await list_ticket_messages(ticket_id);lines=[f"🎫 <b>Тикет #{ticket_id}</b>",f"📌 {ticket['subject']}",f"Статус: {ticket['status']}",""]
     for row in messages:lines.append(("👤 Ты" if row["sender_type"]=="user" else "🛠 Администратор")+f": {row['text']}")
     await callback.answer();await callback.message.answer("\n".join(lines),parse_mode="HTML",reply_markup=ticket_keyboard(ticket_id))
+
+@router.callback_query(F.data.startswith("ticket_reply_user:"))
+async def ticket_reply_user_start(callback: CallbackQuery, state: FSMContext):
+    ticket_id=int(callback.data.split(":",1)[1]); ticket=await get_ticket(ticket_id)
+    if not ticket or int(ticket["user_id"])!=callback.from_user.id or ticket["status"]!="open":
+        return await callback.answer("Тикет закрыт или не найден.",show_alert=True)
+    await state.clear(); await state.update_data(user_ticket_id=ticket_id); await state.set_state(TicketForm.message)
+    await callback.answer(); await callback.message.answer(f"💬 Напиши сообщение в тикет <b>#{ticket_id}</b>.",parse_mode="HTML")
+
+@router.message(FSMContext)
+async def _noop_ticket_guard(message: Message, state: FSMContext):
+    return
 
 @router.message(F.text=="/tickets")
 async def tickets_command(message:Message):
