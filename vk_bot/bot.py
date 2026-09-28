@@ -250,16 +250,51 @@ async def run_vk_bot() -> None:
         )
         await _send_application_to_admins(app_id, data, user_id)
 
-    @bot.on.message()
-    async def handle(message: Message):
-        try:
-            user_id = int(getattr(message, "from_id", 0) or 0)
-            peer_id = int(getattr(message, "peer_id", user_id) or user_id)
-            text = str(getattr(message, "text", "") or "").strip()
-        except Exception:
-            logger.exception("❌ Failed to parse VK message object")
-            return
+    class _RawVKMessage:
+        def __init__(self, bot_instance, from_id: int, peer_id: int, text: str):
+            self.bot = bot_instance
+            self.from_id = from_id
+            self.peer_id = peer_id
+            self.text = text
 
+        async def answer(self, text: str, keyboard: str | None = None):
+            if not await _send_vk(self.peer_id, text, keyboard):
+                raise RuntimeError(f"VK message delivery failed for peer_id={self.peer_id}")
+
+    @bot.on.raw_event("message_new")
+    async def handle(event):
+        try:
+            if not isinstance(event, dict):
+                logger.warning("⚠️ Unexpected VK event type: %s", type(event).__name__)
+                return
+
+            event_object = event.get("object", {})
+            if not isinstance(event_object, dict):
+                logger.warning("⚠️ VK event object is not dict: %r", event_object)
+                return
+
+            payload = event_object.get("message", event_object)
+            if not isinstance(payload, dict):
+                logger.warning("⚠️ VK message payload is not dict: %r", payload)
+                return
+
+            user_id = int(payload.get("from_id", 0) or 0)
+            peer_id = int(payload.get("peer_id", user_id) or user_id)
+            text = str(payload.get("text", "") or "").strip()
+
+            if not user_id:
+                logger.warning("⚠️ VK message_new has no from_id: %r", payload)
+                return
+
+            message = _RawVKMessage(bot, user_id, peer_id, text)
+            normalized = text.lower()
+
+            logger.info(
+                "📩 VK message received: peer_id=%s from_id=%s text=%r",
+                peer_id,
+                user_id,
+                text,
+            )
         if not user_id:
             logger.warning("⚠️ VK message_new event has no from_id: %r", event)
             return
