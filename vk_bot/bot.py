@@ -268,31 +268,14 @@ async def run_vk_bot() -> None:
             if not await _send_vk(self.peer_id, text, keyboard):
                 raise RuntimeError(f"VK message delivery failed for peer_id={self.peer_id}")
 
-    @bot.on.raw_event("message_new")
-    async def handle(event):
+    @bot.on.message()
+    async def handle(message: Message):
         try:
-            if isinstance(event, dict):
-                event_object = event.get("object", {})
-            else:
-                event_object = getattr(event, "object", {}) or {}
-                if hasattr(event_object, "model_dump"):
-                    event_object = event_object.model_dump()
-                elif hasattr(event_object, "dict"):
-                    event_object = event_object.dict()
-            if not isinstance(event_object, dict):
-                event_object = {}
-            payload = event_object.get("message", event_object)
-            if hasattr(payload, "model_dump"):
-                payload = payload.model_dump()
-            elif hasattr(payload, "dict"):
-                payload = payload.dict()
-            if not isinstance(payload, dict):
-                payload = {}
-            user_id = int(payload.get("from_id", 0) or 0)
-            peer_id = int(payload.get("peer_id", user_id) or user_id)
-            text = str(payload.get("text", "") or "").strip()
+            user_id = int(getattr(message, "from_id", 0) or 0)
+            peer_id = int(getattr(message, "peer_id", user_id) or user_id)
+            text = str(getattr(message, "text", "") or "").strip()
         except Exception:
-            logger.exception("❌ Failed to parse VK message_new event")
+            logger.exception("❌ Failed to parse VK message object")
             return
 
         if not user_id:
