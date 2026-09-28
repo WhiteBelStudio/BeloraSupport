@@ -263,10 +263,34 @@ async def run_vk_bot() -> None:
         except Exception:
             logger.exception("Failed to log raw VK message_new event")
 
-    @bot.on.message()
-    async def handle(message: Message):
-        user_id = int(getattr(message, "from_id", 0) or 0)
-        text = (message.text or "").strip()
+    class _RawVKMessage:
+        def __init__(self, bot_instance, from_id: int, peer_id: int, text: str):
+            self.bot = bot_instance
+            self.from_id = from_id
+            self.peer_id = peer_id
+            self.text = text
+
+        async def answer(self, text: str, keyboard: str | None = None):
+            if not await _send_vk(self.peer_id, text, keyboard):
+                raise RuntimeError(f"VK message delivery failed for peer_id={self.peer_id}")
+
+    @bot.on.raw_event("message_new")
+    async def handle(event):
+        try:
+            event_object = event.get("object", {}) if isinstance(event, dict) else {}
+            payload = event_object.get("message", event_object) if isinstance(event_object, dict) else {}
+            user_id = int(payload.get("from_id", 0) or 0)
+            peer_id = int(payload.get("peer_id", user_id) or user_id)
+            text = str(payload.get("text", "") or "").strip()
+        except Exception:
+            logger.exception("❌ Failed to parse VK message_new event")
+            return
+
+        if not user_id:
+            logger.warning("⚠️ VK message_new event has no from_id: %r", event)
+            return
+
+        message = _RawVKMessage(bot, user_id, peer_id, text)
         normalized = text.lower()
 
         logger.info(
