@@ -282,10 +282,10 @@ async def run_vk_bot() -> None:
         if normalized == "🆘 техподдержка":
             existing = await get_open_ticket_by_user("vk", user_id)
             if existing:
-                await _answer(message, f"🎫 У тебя уже открыт тикет #{existing['id']}.\\n\\n📌 {existing['subject']}\\n\\nМожно продолжить переписку.", _vk_ticket_user_keyboard(int(existing["id"])))
+                await _answer(message, f"🎫 У тебя уже открыт тикет #{existing['id']}.\n\n📌 {existing['subject']}\n\nМожно продолжить переписку.", _vk_ticket_user_keyboard(int(existing["id"])))
             else:
                 VK_STATES[str(user_id)] = {"step": "ticket_subject"}
-                await _answer(message, "🎫 Создание тикета\\n\\nНапиши тему обращения.", main_keyboard)
+                await _answer(message, "🎫 Создание тикета\n\nНапиши тему обращения.", main_keyboard)
             return
 
         if normalized == "🎫 тикеты" and is_admin("vk", user_id):
@@ -293,7 +293,7 @@ async def run_vk_bot() -> None:
             if not tickets:
                 await _answer(message, "🎫 Открытых тикетов нет.", _admin_panel_keyboard())
             else:
-                await _answer(message, "🎫 ОТКРЫТЫЕ ТИКЕТЫ\\n\\n" + "\\n".join(f"#{t['id']} • {t['subject'][:45]} • ID {t['user_id']}" for t in tickets), _admin_panel_keyboard())
+                await _answer(message, "🎫 ОТКРЫТЫЕ ТИКЕТЫ\n\n" + "\n".join(f"#{t['id']} • {t['subject'][:45]} • ID {t['user_id']}" for t in tickets), _admin_panel_keyboard())
             return
 
         if normalized.startswith("📖 тикет #") and not is_admin("vk", user_id):
@@ -305,7 +305,7 @@ async def run_vk_bot() -> None:
             messages=await list_ticket_messages(ticket_id)
             lines=[f"🎫 Тикет #{ticket_id}",f"📌 {ticket['subject']}",f"Статус: {ticket['status']}",""]
             lines += [("👤 Ты: " if row["sender_type"]=="user" else "🛠 Администратор: ")+row["text"] for row in messages]
-            await _answer(message,"\\n".join(lines),_vk_ticket_user_keyboard(ticket_id)); return
+            await _answer(message,"\n".join(lines),_vk_ticket_user_keyboard(ticket_id)); return
 
         if normalized.startswith("💬 ответить в тикет #") and not is_admin("vk", user_id):
             try: ticket_id=int(normalized.split("#",1)[1])
@@ -325,7 +325,7 @@ async def run_vk_bot() -> None:
             messages=await list_ticket_messages(ticket_id)
             lines=[f"🎫 Тикет #{ticket_id}",f"📌 {ticket['subject']}",f"👤 ID: {ticket['user_id']}",f"Статус: {ticket['status']}",""]
             lines += [("👤 Пользователь: " if row["sender_type"]=="user" else "🛠 Администратор: ")+row["text"] for row in messages]
-            await _answer(message,"\\n".join(lines),_vk_ticket_admin_keyboard(ticket_id)); return
+            await _answer(message,"\n".join(lines),_vk_ticket_admin_keyboard(ticket_id)); return
 
         if is_admin("vk", user_id) and normalized.startswith("💬 ответить #"):
             try: ticket_id=int(normalized.split("#",1)[1])
@@ -335,7 +335,7 @@ async def run_vk_bot() -> None:
                 await _answer(message,"❌ Тикет закрыт или не найден.",_admin_panel_keyboard()); return
             await assign_ticket(ticket_id,user_id)
             VK_STATES[str(user_id)]={"step":"admin_ticket_reply","ticket_id":ticket_id}
-            await _answer(message,f"💬 Ответ на тикет #{ticket_id}.\\n\\nНапиши сообщение.",_admin_panel_keyboard()); return
+            await _answer(message,f"💬 Ответ на тикет #{ticket_id}.\n\nНапиши сообщение.",_admin_panel_keyboard()); return
 
         if is_admin("vk", user_id) and normalized.startswith("🔴 закрыть #"):
             try: ticket_id=int(normalized.split("#",1)[1])
@@ -551,7 +551,7 @@ async def run_vk_bot() -> None:
             ticket_id=await create_ticket("vk",user_id,None,state["subject"])
             await add_ticket_message(ticket_id,"vk","user",user_id,text); VK_STATES.pop(str(user_id),None)
             await _answer(message,f"✅ Тикет #{ticket_id} создан. Администратор ответит сюда.",_vk_ticket_user_keyboard(ticket_id))
-            notice=f"🎫 Новый тикет #{ticket_id}\\n\\n👤 VK ID: {user_id}\\n📌 {state['subject']}\\n\\n{text}"
+            notice=f"🎫 Новый тикет #{ticket_id}\n\n👤 VK ID: {user_id}\n📌 {state['subject']}\n\n{text}"
             for admin_id in effective_admin_ids("vk"):
                 await _send_vk(admin_id,notice,_vk_ticket_admin_keyboard(ticket_id))
             return
@@ -561,7 +561,7 @@ async def run_vk_bot() -> None:
             if not ticket or ticket["status"]!="open":
                 VK_STATES.pop(str(user_id),None); await _answer(message,"Тикет закрыт.",main_keyboard); return
             await add_ticket_message(ticket_id,"vk","user",user_id,text); VK_STATES.pop(str(user_id),None)
-            notice=f"📩 Новое сообщение в тикете #{ticket_id}\\n\\n👤 VK ID: {user_id}\\n\\n{text}"
+            notice=f"📩 Новое сообщение в тикете #{ticket_id}\n\n👤 VK ID: {user_id}\n\n{text}"
             for admin_id in effective_admin_ids("vk"):
                 await _send_vk(admin_id,notice,_vk_ticket_admin_keyboard(ticket_id))
             await _answer(message,"📨 Сообщение передано администратору.",_vk_ticket_user_keyboard(ticket_id)); return
@@ -571,7 +571,7 @@ async def run_vk_bot() -> None:
             if not ticket or ticket["status"]!="open":
                 VK_STATES.pop(str(user_id),None); await _answer(message,"Тикет закрыт.",_admin_panel_keyboard()); return
             await assign_ticket(ticket_id,user_id); await add_ticket_message(ticket_id,"vk","admin",user_id,text)
-            if await _send_vk(int(ticket["user_id"]),f"💬 Ответ по тикету #{ticket_id}\\n\\n{text}",_vk_ticket_user_keyboard(ticket_id)):
+            if await _send_vk(int(ticket["user_id"]),f"💬 Ответ по тикету #{ticket_id}\n\n{text}",_vk_ticket_user_keyboard(ticket_id)):
                 VK_STATES.pop(str(user_id),None); await _answer(message,"📨 Ответ отправлен.",_admin_panel_keyboard())
             else:
                 await _answer(message,"❌ Не удалось отправить ответ.",_admin_panel_keyboard())
