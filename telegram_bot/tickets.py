@@ -11,7 +11,7 @@ from .ticket_keyboards import ticket_admin_keyboard, ticket_keyboard
 logger=logging.getLogger("BeloraSupport.Tickets")
 router=Router()
 class TicketForm(StatesGroup):
-    subject=State(); message=State()
+    subject=State(); message=State(); reply=State()
 class AdminTicketForm(StatesGroup):
     message=State()
 
@@ -92,8 +92,29 @@ async def ticket_reply_user_start(callback: CallbackQuery, state: FSMContext):
     ticket_id=int(callback.data.split(":",1)[1]); ticket=await get_ticket(ticket_id)
     if not ticket or int(ticket["user_id"])!=callback.from_user.id or ticket["status"]!="open":
         return await callback.answer("Тикет закрыт или не найден.",show_alert=True)
-    await state.clear(); await state.update_data(user_ticket_id=ticket_id); await state.set_state(TicketForm.message)
+    await state.clear(); await state.update_data(user_ticket_id=ticket_id); await state.set_state(TicketForm.reply)
     await callback.answer(); await callback.message.answer(f"💬 Напиши сообщение в тикет <b>#{ticket_id}</b>.",parse_mode="HTML")
+
+@router.message(TicketForm.reply)
+async def ticket_user_reply(message: Message, state: FSMContext):
+    data=await state.get_data(); ticket_id=data.get("user_ticket_id")
+    if not ticket_id:
+        await state.clear(); return
+    ticket=await get_ticket(int(ticket_id))
+    if not ticket or int(ticket["user_id"])!=message.from_user.id or ticket["status"]!="open":
+        await state.clear(); return await message.answer("Тикет закрыт или не найден.")
+    text=(message.text or "").strip()
+    if not 1<=len(text)<=3000:
+        return await message.answer("Сообщение должно быть от 1 до 3000 символов.")
+    await add_ticket_message(int(ticket_id),"telegram","user",message.from_user.id,text)
+    notification=f"📩 <b>Новое сообщение в тикете #{ticket_id}</b>\\n\\n👤 <code>{message.from_user.id}</code>\\n📌 {html.escape(ticket['subject'])}\\n\\n{html.escape(text)}"
+    for admin_id in effective_admin_ids("telegram"):
+        try:
+            await message.bot.send_message(admin_id,notification,parse_mode="HTML",reply_markup=ticket_admin_keyboard(int(ticket_id)))
+        except Exception:
+            logger.exception("Failed to notify admin %s about ticket #%s",admin_id,ticket_id)
+    await state.clear()
+    await message.answer("📨 Сообщение передано администратору.",reply_markup=ticket_keyboard(int(ticket_id)))
 
 @router.message(F.text=="/tickets")
 async def tickets_command(message:Message):
