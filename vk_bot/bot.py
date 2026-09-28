@@ -253,15 +253,9 @@ async def run_vk_bot() -> None:
     @bot.on.raw_event("message_new")
     async def _log_vk_message_event(event):
         try:
-            obj = event.get("object", event) if isinstance(event, dict) else event
-            logger.info(
-                "📡 VK message_new event received: from_id=%s peer_id=%s text=%r",
-                obj.get("from_id") if isinstance(obj, dict) else getattr(obj, "from_id", None),
-                obj.get("peer_id") if isinstance(obj, dict) else getattr(obj, "peer_id", None),
-                obj.get("text") if isinstance(obj, dict) else getattr(obj, "text", None),
-            )
+            logger.info("📡 VK raw message_new type=%s value=%r", type(event).__name__, event)
         except Exception:
-            logger.exception("Failed to log raw VK message_new event")
+            logger.exception("Failed to log raw VK message event")
 
     class _RawVKMessage:
         def __init__(self, bot_instance, from_id: int, peer_id: int, text: str):
@@ -277,8 +271,23 @@ async def run_vk_bot() -> None:
     @bot.on.raw_event("message_new")
     async def handle(event):
         try:
-            event_object = event.get("object", {}) if isinstance(event, dict) else {}
-            payload = event_object.get("message", event_object) if isinstance(event_object, dict) else {}
+            if isinstance(event, dict):
+                event_object = event.get("object", {})
+            else:
+                event_object = getattr(event, "object", {}) or {}
+                if hasattr(event_object, "model_dump"):
+                    event_object = event_object.model_dump()
+                elif hasattr(event_object, "dict"):
+                    event_object = event_object.dict()
+            if not isinstance(event_object, dict):
+                event_object = {}
+            payload = event_object.get("message", event_object)
+            if hasattr(payload, "model_dump"):
+                payload = payload.model_dump()
+            elif hasattr(payload, "dict"):
+                payload = payload.dict()
+            if not isinstance(payload, dict):
+                payload = {}
             user_id = int(payload.get("from_id", 0) or 0)
             peer_id = int(payload.get("peer_id", user_id) or user_id)
             text = str(payload.get("text", "") or "").strip()
