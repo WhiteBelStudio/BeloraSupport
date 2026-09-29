@@ -464,6 +464,9 @@ async def run_vk_bot() -> None:
                 return
             platform = "telegram" if parts[1].lower() in {"tg", "telegram"} else "vk"
             target_id = int(parts[2])
+            if target_id <= 0:
+                await _answer(message, "❌ ID должен быть положительным числом.", _admin_panel_keyboard())
+                return
             if is_owner(platform, target_id):
                 await _answer(message, "👑 Этот ID уже является владельцем и имеет полный доступ.", _admin_panel_keyboard())
                 return
