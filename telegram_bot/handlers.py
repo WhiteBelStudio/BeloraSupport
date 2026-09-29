@@ -227,14 +227,37 @@ async def reject_reason(message: Message,state:FSMContext):
     if not is_admin("telegram", message.from_user.id): return await state.clear()
     reason=(message.text or "").strip()
     if not 2 <= len(reason) <= 500: return await message.answer("Причина: от 2 до 500 символов.")
-    app_id=int((await state.get_data())["reject_app_id"]); app=await get_application(app_id)
-    if app and await set_status(app_id,"rejected",reason):
-        if app["platform"]=="telegram":
-            try: await message.bot.send_message(int(app["user_id"]),f"❌ Заявка #{app_id} отклонена.\nПричина: {reason}")
-            except Exception: pass
-        await message.answer(f"❌ Заявка #{app_id} отклонена.")
-    else: await message.answer("Заявка уже обработана или не найдена.")
+    data = await state.get_data()
+    try:
+        app_id = int(data["reject_app_id"])
+    except (KeyError, TypeError, ValueError):
+        await state.clear()
+        return await message.answer("❌ Сессия отклонения заявки недействительна. Открой заявку заново.")
+    if app_id <= 0:
+        await state.clear()
+        return await message.answer("❌ Некорректный ID заявки.")
+    app = await get_application(app_id)
+    if not app:
+        await state.clear()
+        return await message.answer("❌ Заявка не найдена.")
+    if app["status"] != "pending":
+        await state.clear()
+        return await message.answer(f"ℹ️ Заявка уже обработана: {app['status']}.")
+    if not await set_status(app_id, "rejected", reason):
+        await state.clear()
+        return await message.answer("ℹ️ Заявка уже обработана или не найдена.")
+    notification_failed = False
+    if app["platform"] == "telegram":
+        try:
+            await message.bot.send_message(
+                int(app["user_id"]),
+                f"❌ Заявка #{app_id} отклонена.\nПричина: {reason}",
+            )
+        except Exception:
+            notification_failed = True
     await state.clear()
+    suffix = "\n⚠️ Уведомление пользователю не доставлено." if notification_failed else ""
+    await message.answer(f"❌ Заявка #{app_id} отклонена.{suffix}")
 
 
 @router.message(F.text.startswith("/addadmin"))
