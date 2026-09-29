@@ -629,7 +629,7 @@ async def run_vk_bot() -> None:
                 await _answer(message, f"ℹ️ Заявка уже обработана: {app['status']}.", _admin_panel_keyboard())
                 return
             VK_STATES[str(user_id)] = {"step": "admin_reject_reason", "app_id": app_id}
-            await _answer(message, f"📝 Напиши причину отклонения заявки #{app_id}.", _admin_panel_keyboard())
+            await _answer(message, f"📝 Напиши причину отклонения заявки #{app_id}. От 2 до 500 символов.", _admin_panel_keyboard())
             return
 
         state = VK_STATES.get(str(user_id))
@@ -673,7 +673,7 @@ async def run_vk_bot() -> None:
 
         state = VK_STATES.get(str(user_id))
         if state and state.get("step") == "admin_reject_reason" and is_admin("vk", user_id):
-            reason = text
+            reason = text.strip()
             if not 2 <= len(reason) <= 500:
                 await _answer(message, "Причина должна быть от 2 до 500 символов.", _admin_panel_keyboard())
                 return
