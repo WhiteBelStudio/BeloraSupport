@@ -220,7 +220,21 @@ async def approve(callback: CallbackQuery):
 @router.callback_query(F.data.startswith("app_reject:"))
 async def reject(callback: CallbackQuery,state:FSMContext):
     if not is_admin("telegram", callback.from_user.id): return await callback.answer("Нет доступа.",show_alert=True)
-    await state.update_data(reject_app_id=int(callback.data.split(":")[1])); await state.set_state(ApplicationForm.reject_reason); await callback.answer(); await callback.message.answer("Напиши причину отклонения заявки.")
+    try:
+        app_id = int(callback.data.split(":", 1)[1])
+    except (TypeError, ValueError):
+        return await callback.answer("Некорректный ID заявки.", show_alert=True)
+    if app_id <= 0:
+        return await callback.answer("Некорректный ID заявки.", show_alert=True)
+    app = await get_application(app_id)
+    if not app:
+        return await callback.answer("Заявка не найдена.", show_alert=True)
+    if app["status"] != "pending":
+        return await callback.answer(f"Заявка уже обработана: {app['status']}.", show_alert=True)
+    await state.update_data(reject_app_id=app_id)
+    await state.set_state(ApplicationForm.reject_reason)
+    await callback.answer()
+    await callback.message.answer("📝 Напиши причину отклонения. От 2 до 500 символов.")
 
 @router.message(ApplicationForm.reject_reason)
 async def reject_reason(message: Message,state:FSMContext):
