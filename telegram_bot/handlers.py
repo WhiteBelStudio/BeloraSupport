@@ -571,6 +571,8 @@ async def admin_del_start(callback: CallbackQuery, state: FSMContext):
     if not is_owner("telegram", callback.from_user.id):
         return await callback.answer("Только владелец может управлять администраторами.", show_alert=True)
     platform = callback.data.split(":", 1)[1]
+    if platform not in {"telegram", "vk"}:
+        return await callback.answer("Некорректная платформа.", show_alert=True)
     await state.update_data(admin_action="delete", admin_platform=platform)
     await state.set_state(AdminManageForm.user_id)
     await callback.answer()
