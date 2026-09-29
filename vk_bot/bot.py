@@ -549,7 +549,19 @@ async def run_vk_bot() -> None:
 
         if normalized in {"📊 статистика", "статистика"} and is_admin("vk", user_id):
             stats = await application_stats()
-            await _answer(message, f"📊 СТАТИСТИКА\n\n📋 Всего: {stats['total']}\n📥 Ожидают: {stats['pending']}\n✅ Одобрено: {stats['approved']}\n❌ Отклонено: {stats['rejected']}", _admin_panel_keyboard())
+            await _answer(
+                message,
+                f"📊 СТАТИСТИКА\n\n"
+                f"📋 Всего: {stats['total']}\n"
+                f"📥 Ожидают: {stats['pending']}\n"
+                f"✅ Одобрено: {stats['approved']}\n"
+                f"❌ Отклонено: {stats['rejected']}\n\n"
+                f"🤖 Telegram: {stats['telegram_total']} "
+                f"(📥 {stats['telegram_pending']} / ✅ {stats['telegram_approved']} / ❌ {stats['telegram_rejected']})\n"
+                f"🔵 VK: {stats['vk_total']} "
+                f"(📥 {stats['vk_pending']} / ✅ {stats['vk_approved']} / ❌ {stats['vk_rejected']})",
+                _admin_panel_keyboard(),
+            )
             return
 
         if normalized in {"📥 новые", "ожидают"} and is_admin("vk", user_id):
