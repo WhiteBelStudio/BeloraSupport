@@ -191,13 +191,31 @@ async def my_application(callback: CallbackQuery):
 @router.callback_query(F.data.startswith("app_approve:"))
 async def approve(callback: CallbackQuery):
     if not is_admin("telegram", callback.from_user.id): return await callback.answer("Нет доступа.",show_alert=True)
-    app_id=int(callback.data.split(":")[1]); app=await get_application(app_id)
-    if not app: return await callback.answer("Заявка не найдена.",show_alert=True)
-    if not await set_status(app_id,"approved"): return await callback.answer("Заявка уже обработана.",show_alert=True)
-    if app["platform"]=="telegram":
-        try: await callback.bot.send_message(int(app["user_id"]),f"🎉 Твоя заявка #{app_id} одобрена! Добро пожаловать в фан-клуб.")
-        except Exception: pass
-    await callback.message.edit_reply_markup(reply_markup=None); await callback.message.answer(f"✅ Заявка #{app_id} одобрена.")
+    try:
+        app_id = int(callback.data.split(":", 1)[1])
+    except (TypeError, ValueError):
+        return await callback.answer("Некорректный ID заявки.", show_alert=True)
+    if app_id <= 0:
+        return await callback.answer("Некорректный ID заявки.", show_alert=True)
+    app = await get_application(app_id)
+    if not app:
+        return await callback.answer("Заявка не найдена.", show_alert=True)
+    if app["status"] != "pending":
+        return await callback.answer(f"Заявка уже обработана: {app['status']}.", show_alert=True)
+    if not await set_status(app_id, "approved"):
+        return await callback.answer("Заявка уже обработана.", show_alert=True)
+    notification_failed = False
+    if app["platform"] == "telegram":
+        try:
+            await callback.bot.send_message(
+                int(app["user_id"]),
+                f"🎉 Твоя заявка #{app_id} одобрена! Добро пожаловать в фан-клуб.",
+            )
+        except Exception:
+            notification_failed = True
+    await callback.message.edit_reply_markup(reply_markup=None)
+    suffix = "\n⚠️ Уведомление пользователю не доставлено." if notification_failed else ""
+    await callback.message.answer(f"✅ Заявка #{app_id} одобрена.{suffix}")
 
 @router.callback_query(F.data.startswith("app_reject:"))
 async def reject(callback: CallbackQuery,state:FSMContext):
