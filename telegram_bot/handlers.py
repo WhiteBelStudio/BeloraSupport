@@ -388,13 +388,20 @@ async def panel_all(callback: CallbackQuery):
     if not is_admin("telegram", callback.from_user.id):
         return await callback.answer("Нет доступа.", show_alert=True)
     await callback.answer()
-    page = max(0, int(callback.data.split(":", 1)[1]))
+    try:
+        page = max(0, int(callback.data.split(":", 1)[1]))
+    except (TypeError, ValueError):
+        page = 0
     total = await count_applications()
+    if total <= 0:
+        return await callback.message.edit_text("📋 <b>Заявок пока нет.</b>", parse_mode="HTML", reply_markup=admin_panel_keyboard())
+    max_page = (total - 1) // 10
+    page = min(page, max_page)
     apps = await list_applications(limit=10, offset=page * 10)
     if not apps:
-        return await callback.message.edit_text("📋 <b>Заявок пока нет.</b>", parse_mode="HTML", reply_markup=admin_panel_keyboard())
+        return await callback.message.edit_text("📋 <b>Заявок на этой странице нет.</b>", parse_mode="HTML", reply_markup=admin_panel_keyboard())
     await callback.message.edit_text(
-        f"📋 <b>Все заявки</b>\nСтраница {page + 1}\n\nВыбери заявку:",
+        f"📋 <b>Все заявки</b>\nВсего: {total}\nСтраница {page + 1} из {max_page + 1}\n\nВыбери заявку:",
         parse_mode="HTML",
         reply_markup=admin_list_keyboard(apps, page, total, "panel_all"),
     )
