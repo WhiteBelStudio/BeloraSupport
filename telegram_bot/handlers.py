@@ -412,7 +412,12 @@ async def panel_application(callback: CallbackQuery):
     if not is_admin("telegram", callback.from_user.id):
         return await callback.answer("Нет доступа.", show_alert=True)
     await callback.answer()
-    app_id = int(callback.data.split(":", 1)[1])
+    try:
+        app_id = int(callback.data.split(":", 1)[1])
+    except (TypeError, ValueError):
+        return await callback.message.edit_text("❌ Некорректный ID заявки.", reply_markup=admin_panel_keyboard())
+    if app_id <= 0:
+        return await callback.message.edit_text("❌ Некорректный ID заявки.", reply_markup=admin_panel_keyboard())
     app = await get_application(app_id)
     if not app:
         return await callback.message.edit_text("❌ Заявка не найдена.", reply_markup=admin_panel_keyboard())
