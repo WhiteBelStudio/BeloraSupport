@@ -159,7 +159,7 @@ async def apply_confirm(callback: CallbackQuery, state: FSMContext):
     data=await state.get_data(); user=callback.from_user
     app_id=await create_application("telegram",str(user.id),user.username,data["name"],data["age"],data["city"],data["reason"],data["interests"])
     await state.clear()
-    await callback.message.answer(f"✅ Заявка <b>#{app_id}</b> отправлена администраторам.",parse_mode="HTML",reply_markup=main_keyboard())
+    await callback.message.answer(f"✅ Заявка <b>#{app_id}</b> отправлена администраторам.",parse_mode="HTML",reply_markup=main_keyboard(is_admin("telegram", callback.from_user.id)))
     username = html.escape(user.username) if user.username else "нет"
     text=(f"🎫 <b>Новая заявка #{app_id}</b>\n\n👤 {html.escape(data['name'])}\n🎂 {data['age']}\n📍 {html.escape(data['city'])}\n💬 {html.escape(data['reason'])}\n⭐ {html.escape(data['interests'])}\n\nTelegram ID: <code>{user.id}</code>\nUsername: @{username}")
     recipient_ids = effective_admin_ids("telegram")
