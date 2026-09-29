@@ -5,7 +5,7 @@ import logging
 import os
 import secrets
 
-from database import add_admin, application_stats, ban_user, count_applications, create_application, get_application, get_ban, has_pending, is_banned, list_admins, list_applications, list_bans, remove_admin, set_status, unban_user, add_ticket_message, assign_ticket, close_ticket, create_ticket, get_open_ticket_by_user, get_ticket, list_ticket_messages, list_tickets
+from database import add_admin, application_stats, ban_user, count_applications, create_application, get_application, get_ban, has_pending, is_banned, list_admins, list_applications, list_bans, remove_admin, set_status, unban_user, add_ticket_message, assign_ticket, close_ticket, create_ticket, get_open_ticket_by_user, get_ticket, list_ticket_messages, list_tickets, start_conversation, close_conversation, get_active_conversation_by_admin, get_active_conversation_by_user
 from config import effective_admin_ids, is_admin, is_owner
 
 logger = logging.getLogger("BeloraSupport.VK")
@@ -204,8 +204,16 @@ async def run_vk_bot() -> None:
                 {"action": {"type": "text", "label": f"✅ Одобрить #{app_id}"}, "color": "positive"},
                 {"action": {"type": "text", "label": f"❌ Отклонить #{app_id}"}, "color": "negative"},
             ])
+        if status in {"pending", "approved", "rejected"}:
+            buttons.append([{"action": {"type": "text", "label": f"💬 Написать пользователю #{app_id}"}, "color": "primary"}])
         buttons.append([{ "action": {"type": "text", "label": "🏠 Панель"}, "color": "secondary" }])
         return json.dumps({"one_time": False, "inline": False, "buttons": buttons}, ensure_ascii=False)
+
+    def _vk_application_chat_keyboard(app_id: int) -> str:
+        return json.dumps({"one_time": False, "inline": False, "buttons": [
+            [{"action": {"type": "text", "label": f"🔴 Завершить переписку #{app_id}"}, "color": "negative"}],
+            [{"action": {"type": "text", "label": "🏠 Панель"}, "color": "secondary"}],
+        ]}, ensure_ascii=False)
 
     async def _send_application_to_admins(app_id: int, data: dict, user_id: int) -> None:
         text = (
@@ -311,6 +319,58 @@ async def run_vk_bot() -> None:
                 "Нажми «🎫 Подать заявку», чтобы начать.",
                 main_keyboard,
             )
+            return
+
+        if is_admin("vk", user_id) and normalized.startswith("💬 написать пользователю #"):
+            try:
+                app_id = int(normalized.split("#", 1)[1].strip())
+            except (TypeError, ValueError):
+                app_id = 0
+            if app_id <= 0:
+                await _answer(message, "❌ Некорректный ID заявки.", _admin_panel_keyboard())
+                return
+            app = await get_application(app_id)
+            if not app or app["platform"] != "vk":
+                await _answer(message, "❌ VK-пользователь заявки не найден.", _admin_panel_keyboard())
+                return
+            await start_conversation("vk", app_id, user_id, int(app["user_id"]))
+            if not await _send_vk(int(app["user_id"]), f"💬 Администратор начал переписку по заявке #{app_id}.\\n\\nМожешь отправить сообщение сюда — оно будет передано администратору.", _main_keyboard(False)):
+                await close_conversation("vk", app_id)
+                await _answer(message, "❌ Не удалось связаться с пользователем.", _admin_panel_keyboard())
+                return
+            await _answer(message, f"💬 Переписка по заявке #{app_id} активна.\\n\\nОтправляй сообщения сюда.", _vk_application_chat_keyboard(app_id))
+            return
+
+        if is_admin("vk", user_id) and normalized.startswith("🔴 завершить переписку #"):
+            try:
+                app_id = int(normalized.split("#", 1)[1].strip())
+            except (TypeError, ValueError):
+                app_id = 0
+            if app_id <= 0:
+                await _answer(message, "❌ Некорректный ID заявки.", _admin_panel_keyboard())
+                return
+            app = await get_application(app_id)
+            await close_conversation("vk", app_id)
+            if app and app["platform"] == "vk":
+                await _send_vk(int(app["user_id"]), f"🔴 Переписка по заявке #{app_id} завершена администратором.", _main_keyboard(False))
+            await _answer(message, f"🔴 Переписка по заявке #{app_id} завершена.", _admin_panel_keyboard())
+            return
+
+        if is_admin("vk", user_id):
+            active_admin_chat = await get_active_conversation_by_admin("vk", user_id)
+            if active_admin_chat and not normalized.startswith("💬 написать пользователю #") and not normalized.startswith("🔴 завершить переписку #"):
+                if await _send_vk(int(active_admin_chat["user_id"]), f"💬 Администратор: {text}", _main_keyboard(False)):
+                    await _answer(message, "📨 Доставлено пользователю.", _vk_application_chat_keyboard(int(active_admin_chat["application_id"])))
+                else:
+                    await _answer(message, "❌ Не удалось доставить сообщение пользователю.", _vk_application_chat_keyboard(int(active_admin_chat["application_id"])))
+                return
+
+        active_user_chat = await get_active_conversation_by_user("vk", user_id)
+        if active_user_chat and not is_admin("vk", user_id):
+            if await _send_vk(int(active_user_chat["admin_id"]), f"💬 Пользователь по заявке #{active_user_chat['application_id']}:\\n{text}", _admin_panel_keyboard()):
+                await _answer(message, "📨 Сообщение передано администратору.", _main_keyboard(False))
+            else:
+                await _answer(message, "❌ Не удалось передать сообщение администратору.", _main_keyboard(False))
             return
 
         if normalized == "🆘 техподдержка":
