@@ -590,8 +590,13 @@ async def admin_manage_user_id(message: Message, state: FSMContext):
     if not raw.isdigit():
         return await message.answer("❗ ID должен состоять только из цифр. Попробуй ещё раз.")
     data = await state.get_data()
-    platform = data["admin_platform"]
+    platform = data.get("admin_platform")
+    if platform not in {"telegram", "vk"}:
+        await state.clear()
+        return await message.answer("❌ Некорректная платформа. Операция отменена.")
     user_id = int(raw)
+    if user_id <= 0:
+        return await message.answer("❗ ID должен быть положительным числом. Попробуй ещё раз.")
     from config import owner_ids
     from .keyboards import admin_management_keyboard
     if user_id in owner_ids(platform):
