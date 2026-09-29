@@ -73,9 +73,25 @@ async def count_applications(status: str|None=None)->int:
         cur=await db.execute("SELECT COUNT(*) FROM applications" if not status else "SELECT COUNT(*) FROM applications WHERE status=?",() if not status else (status,)); row=await cur.fetchone(); return int(row[0])
 
 async def application_stats()->dict[str,int]:
-    async with aiosqlite.connect(DB_PATH) as db: cur=await db.execute("SELECT status,COUNT(*) FROM applications GROUP BY status"); rows=await cur.fetchall()
-    result={"pending":0,"approved":0,"rejected":0,"total":0}
-    for status,count in rows: result[str(status)]=int(count); result["total"]+=int(count)
+    async with aiosqlite.connect(DB_PATH) as db:
+        cur = await db.execute("SELECT platform,status,COUNT(*) FROM applications GROUP BY platform,status")
+        rows = await cur.fetchall()
+
+    result = {
+        "pending": 0, "approved": 0, "rejected": 0, "total": 0,
+        "telegram_total": 0, "telegram_pending": 0, "telegram_approved": 0, "telegram_rejected": 0,
+        "vk_total": 0, "vk_pending": 0, "vk_approved": 0, "vk_rejected": 0,
+    }
+    for platform, status, count in rows:
+        platform = str(platform)
+        status = str(status)
+        count = int(count)
+        result[status] = result.get(status, 0) + count
+        result["total"] += count
+        prefix = "telegram" if platform == "telegram" else "vk" if platform == "vk" else None
+        if prefix:
+            result[f"{prefix}_total"] += count
+            result[f"{prefix}_{status}"] = result.get(f"{prefix}_{status}", 0) + count
     return result
 
 async def clear_all_applications()->int:
