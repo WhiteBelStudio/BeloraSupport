@@ -527,14 +527,21 @@ async def panel_admins(callback: CallbackQuery):
         return await callback.answer("Нет доступа.", show_alert=True)
     await callback.answer()
     from config import effective_admin_ids, owner_ids
+    from database import list_admins
     tg_owner = ", ".join(str(x) for x in sorted(owner_ids("telegram"))) or "не задан"
     vk_owner = ", ".join(str(x) for x in sorted(owner_ids("vk"))) or "не задан"
+    tg_db = await list_admins("telegram")
+    vk_db = await list_admins("vk")
+    tg_managed = ", ".join(str(row["user_id"]) for row in tg_db) or "нет"
+    vk_managed = ", ".join(str(row["user_id"]) for row in vk_db) or "нет"
     tg_access = ", ".join(str(x) for x in sorted(effective_admin_ids("telegram"))) or "нет"
     vk_access = ", ".join(str(x) for x in sorted(effective_admin_ids("vk"))) or "нет"
     text = (
         "👥 <b>Администраторы</b>\n\n"
         f"👑 Telegram-владелец: <code>{tg_owner}</code>\n"
         f"👑 VK-владелец: <code>{vk_owner}</code>\n\n"
+        f"🗄 Telegram в БД: <code>{tg_managed}</code>\n"
+        f"🗄 VK в БД: <code>{vk_managed}</code>\n\n"
         f"📱 Telegram-доступ: <code>{tg_access}</code>\n"
         f"💬 VK-доступ: <code>{vk_access}</code>\n\n"
         "Управление только владельцем:\n"
