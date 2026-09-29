@@ -562,12 +562,23 @@ async def run_vk_bot() -> None:
                 await _answer(message, f"🛠 АДМИН-ПАНЕЛЬ\n\n📥 Ожидают: {stats['pending']}\n✅ Одобрено: {stats['approved']}\n❌ Отклонено: {stats['rejected']}\n📊 Всего: {stats['total']}", _admin_panel_keyboard())
             return
 
-        if is_admin("vk", user_id) and normalized.startswith("#") and normalized[1:].split()[0].isdigit():
-            app_id = int(normalized[1:].split()[0])
-            app = await get_application(app_id)
-            if app:
+        if is_admin("vk", user_id) and normalized.startswith("#"):
+            parts = normalized[1:].split()
+            if parts and parts[0].isdigit():
+                app_id = int(parts[0])
+                if app_id <= 0:
+                    await _answer(message, "❌ Некорректный ID заявки.", _admin_panel_keyboard())
+                    return
+                app = await get_application(app_id)
+                if not app:
+                    await _answer(message, f"❌ Заявка #{app_id} не найдена.", _admin_panel_keyboard())
+                    return
                 import html
-                await _answer(message, f"🎫 ЗАЯВКА #{app_id}\n\n👤 {html.escape(app['name'])}\n🎂 {app['age']}\n📍 {html.escape(app['city'])}\n💬 {html.escape(app['reason'])}\n⭐ {html.escape(app['interests'])}\n\n🌐 Платформа: {app['platform']}\n🆔 ID: {app['user_id']}\n📌 Статус: {app['status']}\n📝 Причина отказа: {html.escape(app['reject_reason'] or '—')}", _application_keyboard(app_id, app['status']))
+                await _answer(
+                    message,
+                    f"🎫 ЗАЯВКА #{app_id}\n\n👤 {html.escape(app['name'])}\n🎂 {app['age']}\n📍 {html.escape(app['city'])}\n💬 {html.escape(app['reason'])}\n⭐ {html.escape(app['interests'])}\n\n🌐 Платформа: {app['platform']}\n🆔 ID: {app['user_id']}\n📌 Статус: {app['status']}\n📝 Причина отказа: {html.escape(app['reject_reason'] or '—')}\n🕒 Создана: {html.escape(app['created_at'])}",
+                    _application_keyboard(app_id, app['status']),
+                )
                 return
 
         if is_admin("vk", user_id) and normalized.startswith("✅ одобрить #"):
