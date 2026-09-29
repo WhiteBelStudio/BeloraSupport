@@ -504,9 +504,20 @@ async def run_vk_bot() -> None:
 
         if normalized in {"📋 все заявки", "все заявки"} and is_admin("vk", user_id):
             VK_ADMIN_PAGES[str(user_id)] = {"mode": "all", "page": 0}
-            apps = await list_applications(limit=10, offset=0)
             total = await count_applications()
-            await _answer(message, "📋 ВСЕ ЗАЯВКИ\n\nЗаявок пока нет." if not apps else f"📋 ВСЕ ЗАЯВКИ\n\nВсего: {total}\nСтраница 1\n\nВыбери заявку:", _admin_panel_keyboard() if not apps else _admin_list_keyboard(apps, 0, total, "all"))
+            if total <= 0:
+                await _answer(message, "📋 ВСЕ ЗАЯВКИ\n\nЗаявок пока нет.", _admin_panel_keyboard())
+                return
+            apps = await list_applications(limit=10, offset=0)
+            max_page = (total - 1) // 10
+            if not apps:
+                await _answer(message, "📋 ВСЕ ЗАЯВКИ\n\nНа первой странице заявок нет.", _admin_panel_keyboard())
+                return
+            await _answer(
+                message,
+                f"📋 ВСЕ ЗАЯВКИ\n\nВсего: {total}\nСтраница 1 из {max_page + 1}\n\nВыбери заявку:",
+                _admin_list_keyboard(apps, 0, total, "all"),
+            )
             return
 
         if normalized in {"👥 администраторы", "администраторы"} and is_admin("vk", user_id):
