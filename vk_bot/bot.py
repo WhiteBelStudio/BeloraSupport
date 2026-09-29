@@ -387,8 +387,13 @@ async def run_vk_bot() -> None:
             if not is_admin("vk", user_id):
                 await _answer(message, "⛔ Доступ только для администраторов.", main_keyboard)
                 return
+            logger.info("🛠 VK admin panel opened: user_id=%s", user_id)
             stats = await application_stats()
-            await _answer(message, f"🛠 АДМИН-ПАНЕЛЬ\n\n📥 Ожидают: {stats['pending']}\n✅ Одобрено: {stats['approved']}\n❌ Отклонено: {stats['rejected']}\n📊 Всего: {stats['total']}\n\nВыбери раздел:", _admin_panel_keyboard())
+            await _answer(
+                message,
+                f"🛠 АДМИН-ПАНЕЛЬ\n\n📥 Ожидают: {stats['pending']}\n✅ Одобрено: {stats['approved']}\n❌ Отклонено: {stats['rejected']}\n📊 Всего: {stats['total']}\n\nВыбери раздел:",
+                _admin_panel_keyboard(),
+            )
             return
 
         if normalized == "/addadmin" or normalized.startswith("/addadmin "):
