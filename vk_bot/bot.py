@@ -493,15 +493,20 @@ async def run_vk_bot() -> None:
             return
 
         if normalized in {"📥 новые", "ожидают"} and is_admin("vk", user_id):
+            VK_ADMIN_PAGES[str(user_id)] = {"mode": "pending", "page": 0}
             apps = await list_applications("pending", limit=10, offset=0)
             total = await count_applications("pending")
-            await _answer(message, "📥 <b>Новых заявок нет.</b>" if not apps else "📥 НОВЫЕ ЗАЯВКИ\n\nВыбери заявку:", _admin_panel_keyboard() if not apps else _admin_list_keyboard(apps, 0, total, "pending"))
+            if not apps:
+                await _answer(message, "📥 НОВЫЕ ЗАЯВКИ\n\nНовых заявок на рассмотрении нет.", _admin_panel_keyboard())
+            else:
+                await _answer(message, f"📥 НОВЫЕ ЗАЯВКИ\n\nВсего на рассмотрении: {total}\nСтраница 1\n\nВыбери заявку:", _admin_list_keyboard(apps, 0, total, "pending"))
             return
 
         if normalized in {"📋 все заявки", "все заявки"} and is_admin("vk", user_id):
+            VK_ADMIN_PAGES[str(user_id)] = {"mode": "all", "page": 0}
             apps = await list_applications(limit=10, offset=0)
             total = await count_applications()
-            await _answer(message, "📋 Заявок пока нет." if not apps else "📋 ВСЕ ЗАЯВКИ\n\nВыбери заявку:", _admin_panel_keyboard() if not apps else _admin_list_keyboard(apps, 0, total, "all"))
+            await _answer(message, "📋 ВСЕ ЗАЯВКИ\n\nЗаявок пока нет." if not apps else f"📋 ВСЕ ЗАЯВКИ\n\nВсего: {total}\nСтраница 1\n\nВыбери заявку:", _admin_panel_keyboard() if not apps else _admin_list_keyboard(apps, 0, total, "all"))
             return
 
         if normalized in {"👥 администраторы", "администраторы"} and is_admin("vk", user_id):
