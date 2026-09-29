@@ -105,7 +105,12 @@ async def menu_my_application(message: Message):
 async def menu_admin_panel(message: Message):
     if not is_admin("telegram", message.from_user.id):
         return await message.answer("⛔ Доступ только для администраторов.")
-    await message.answer(_panel_text(await application_stats()), parse_mode="HTML", reply_markup=admin_panel_keyboard())
+    logger.info("🛠 Telegram admin panel opened: user_id=%s", message.from_user.id)
+    await message.answer(
+        _panel_text(await application_stats()),
+        parse_mode="HTML",
+        reply_markup=admin_panel_keyboard(),
+    )
 
 
 @router.message(ApplicationForm.name)
