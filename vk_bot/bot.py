@@ -594,14 +594,20 @@ async def run_vk_bot() -> None:
 
         if normalized in {"👥 администраторы", "администраторы"} and is_admin("vk", user_id):
             from config import owner_ids
+            tg_db = await list_admins("telegram")
+            vk_db = await list_admins("vk")
             tg_owner = ", ".join(str(x) for x in sorted(owner_ids("telegram"))) or "не задан"
             vk_owner = ", ".join(str(x) for x in sorted(owner_ids("vk"))) or "не задан"
+            tg_managed = ", ".join(str(row["user_id"]) for row in tg_db) or "нет"
+            vk_managed = ", ".join(str(row["user_id"]) for row in vk_db) or "нет"
             tg_access = ", ".join(str(x) for x in sorted(effective_admin_ids("telegram"))) or "нет"
             vk_access = ", ".join(str(x) for x in sorted(effective_admin_ids("vk"))) or "нет"
             text_admins = (
                 "👥 АДМИНИСТРАТОРЫ\n\n"
                 f"👑 Telegram-владелец: {tg_owner}\n"
                 f"👑 VK-владелец: {vk_owner}\n\n"
+                f"🗄 Telegram в БД: {tg_managed}\n"
+                f"🗄 VK в БД: {vk_managed}\n\n"
                 f"📱 Telegram-доступ: {tg_access}\n"
                 f"💬 VK-доступ: {vk_access}\n\n"
                 "Управление только владельцем VK:\n"
