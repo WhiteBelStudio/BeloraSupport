@@ -14,19 +14,16 @@ VK_STATES: dict[str, dict] = {}
 VK_ADMIN_PAGES: dict[str, dict[str, int]] = {}
 
 
-def _main_keyboard() -> str:
-    keyboard = {
-        "one_time": False,
-        "inline": False,
-        "buttons": [
-            [{"action": {"type": "text", "label": "🎫 Подать заявку"}, "color": "primary"}],
-            [{"action": {"type": "text", "label": "📋 Моя заявка"}, "color": "secondary"}],
-            [{"action": {"type": "text", "label": "📋 Правила"}, "color": "secondary"}],
-            [{"action": {"type": "text", "label": "🆘 Техподдержка"}, "color": "secondary"}],
-            [{"action": {"type": "text", "label": "🛠 Админ-панель"}, "color": "secondary"}],
-        ],
-    }
-    return json.dumps(keyboard, ensure_ascii=False)
+def _main_keyboard(is_admin_user: bool = False) -> str:
+    buttons = [
+        [{"action": {"type": "text", "label": "🎫 Подать заявку"}, "color": "primary"}],
+        [{"action": {"type": "text", "label": "📋 Моя заявка"}, "color": "secondary"}],
+        [{"action": {"type": "text", "label": "📋 Правила"}, "color": "secondary"}],
+        [{"action": {"type": "text", "label": "🆘 Техподдержка"}, "color": "secondary"}],
+    ]
+    if is_admin_user:
+        buttons.append([{"action": {"type": "text", "label": "🛠 Админ-панель"}, "color": "secondary"}])
+    return json.dumps({"one_time": False, "inline": False, "buttons": buttons}, ensure_ascii=False)
 
 
 def _rules_keyboard() -> str:
