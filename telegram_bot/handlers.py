@@ -418,7 +418,11 @@ async def panel_stats(callback: CallbackQuery):
         f"📋 Всего: <b>{stats['total']}</b>\n"
         f"📥 Ожидают: <b>{stats['pending']}</b>\n"
         f"✅ Одобрено: <b>{stats['approved']}</b>\n"
-        f"❌ Отклонено: <b>{stats['rejected']}</b>",
+        f"❌ Отклонено: <b>{stats['rejected']}</b>\n\n"
+        f"🤖 Telegram: <b>{stats['telegram_total']}</b> "
+        f"(📥 {stats['telegram_pending']} / ✅ {stats['telegram_approved']} / ❌ {stats['telegram_rejected']})\n"
+        f"🔵 VK: <b>{stats['vk_total']}</b> "
+        f"(📥 {stats['vk_pending']} / ✅ {stats['vk_approved']} / ❌ {stats['vk_rejected']})",
         parse_mode="HTML",
         reply_markup=admin_panel_keyboard(),
     )
