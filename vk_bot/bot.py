@@ -126,7 +126,8 @@ async def run_vk_bot() -> None:
 
     async def _answer(message: Message, text: str, keyboard: str | None = None) -> None:
         try:
-            await message.answer(text, keyboard=keyboard or main_keyboard)
+            default_keyboard = _main_keyboard(is_admin("vk", getattr(message, "from_id", 0)))
+            await message.answer(text, keyboard=keyboard or default_keyboard)
         except Exception as exc:
             if "912" not in str(exc) and "chat bot feature" not in str(exc).lower():
                 raise
