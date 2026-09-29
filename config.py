@@ -79,10 +79,14 @@ async def load_admin_cache() -> None:
 
 
 def is_owner(platform: str, user_id: int | str) -> bool:
+    """Return True only when the normalized user ID matches the owner ID for this platform."""
     try:
-        return int(str(user_id).strip()) in owner_ids(platform)
+        normalized_id = int(str(user_id).strip())
+        normalized_platform = _platform(platform)
     except (TypeError, ValueError):
         return False
+
+    return normalized_id in owner_ids(normalized_platform)
 
 
 def is_admin(platform: str, user_id: int | str) -> bool:
