@@ -600,7 +600,7 @@ async def run_vk_bot() -> None:
                 notification_failed = False
                 if app["platform"] == "vk":
                     try:
-                        await _send_vk(
+                        notification_failed = not await _send_vk(
                             int(app["user_id"]),
                             f"🎉 Твоя заявка #{app_id} одобрена! Добро пожаловать в фан-клуб.",
                             main_keyboard,
@@ -704,7 +704,7 @@ async def run_vk_bot() -> None:
             notification_failed = False
             if app["platform"] == "vk":
                 try:
-                    await _send_vk(
+                    notification_failed = not await _send_vk(
                         int(app["user_id"]),
                         f"❌ Заявка #{app_id} отклонена.\nПричина: {reason}",
                         main_keyboard,
