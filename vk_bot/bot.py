@@ -582,16 +582,33 @@ async def run_vk_bot() -> None:
                 return
 
         if is_admin("vk", user_id) and normalized.startswith("✅ одобрить #"):
-            try: app_id = int(normalized.split("#", 1)[1])
-            except ValueError: app_id = 0
-            app = await get_application(app_id) if app_id else None
+            try:
+                app_id = int(normalized.split("#", 1)[1].strip())
+            except (TypeError, ValueError):
+                app_id = 0
+            if app_id <= 0:
+                await _answer(message, "❌ Некорректный ID заявки.", _admin_panel_keyboard())
+                return
+            app = await get_application(app_id)
             if not app:
                 await _answer(message, "❌ Заявка не найдена.", _admin_panel_keyboard())
                 return
+            if app["status"] != "pending":
+                await _answer(message, f"ℹ️ Заявка уже обработана: {app['status']}.", _admin_panel_keyboard())
+                return
             if await set_status(app_id, "approved"):
+                notification_failed = False
                 if app["platform"] == "vk":
-                    await _send_vk(int(app["user_id"]), f"🎉 Твоя заявка #{app_id} одобрена! Добро пожаловать в фан-клуб.", main_keyboard)
-                await _answer(message, f"✅ Заявка #{app_id} одобрена.", _admin_panel_keyboard())
+                    try:
+                        await _send_vk(
+                            int(app["user_id"]),
+                            f"🎉 Твоя заявка #{app_id} одобрена! Добро пожаловать в фан-клуб.",
+                            main_keyboard,
+                        )
+                    except Exception:
+                        notification_failed = True
+                suffix = "\n⚠️ Уведомление пользователю не доставлено." if notification_failed else ""
+                await _answer(message, f"✅ Заявка #{app_id} одобрена.{suffix}", _admin_panel_keyboard())
             else:
                 await _answer(message, "ℹ️ Заявка уже обработана.", _admin_panel_keyboard())
             return
