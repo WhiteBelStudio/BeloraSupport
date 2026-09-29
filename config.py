@@ -86,13 +86,21 @@ def is_owner(platform: str, user_id: int | str) -> bool:
 
 
 def is_admin(platform: str, user_id: int | str) -> bool:
-    """Single authorization function used by both Telegram and VK."""
+    """Return True only for an owner or an explicitly registered admin on the given platform."""
     try:
         normalized_id = int(str(user_id).strip())
     except (TypeError, ValueError):
         return False
-    platform = _platform(platform)
-    return normalized_id in effective_admin_ids(platform)
+
+    try:
+        normalized_platform = _platform(platform)
+    except ValueError:
+        return False
+
+    return normalized_id in (
+        owner_ids(normalized_platform)
+        | admin_ids(normalized_platform)
+    )
 
 
 def setup_logging() -> None:
