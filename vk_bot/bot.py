@@ -614,11 +614,22 @@ async def run_vk_bot() -> None:
             return
 
         if is_admin("vk", user_id) and normalized.startswith("❌ отклонить #"):
-            try: app_id = int(normalized.split("#", 1)[1])
-            except ValueError: app_id = 0
-            if app_id:
-                VK_STATES[str(user_id)] = {"step": "admin_reject_reason", "app_id": app_id}
-                await _answer(message, f"📝 Напиши причину отклонения заявки #{app_id}.", _admin_panel_keyboard())
+            try:
+                app_id = int(normalized.split("#", 1)[1].strip())
+            except (TypeError, ValueError):
+                app_id = 0
+            if app_id <= 0:
+                await _answer(message, "❌ Некорректный ID заявки.", _admin_panel_keyboard())
+                return
+            app = await get_application(app_id)
+            if not app:
+                await _answer(message, "❌ Заявка не найдена.", _admin_panel_keyboard())
+                return
+            if app["status"] != "pending":
+                await _answer(message, f"ℹ️ Заявка уже обработана: {app['status']}.", _admin_panel_keyboard())
+                return
+            VK_STATES[str(user_id)] = {"step": "admin_reject_reason", "app_id": app_id}
+            await _answer(message, f"📝 Напиши причину отклонения заявки #{app_id}.", _admin_panel_keyboard())
             return
 
         state = VK_STATES.get(str(user_id))
@@ -666,15 +677,42 @@ async def run_vk_bot() -> None:
             if not 2 <= len(reason) <= 500:
                 await _answer(message, "Причина должна быть от 2 до 500 символов.", _admin_panel_keyboard())
                 return
-            app_id = int(state["app_id"])
+            try:
+                app_id = int(state["app_id"])
+            except (KeyError, TypeError, ValueError):
+                VK_STATES.pop(str(user_id), None)
+                await _answer(message, "❌ Сессия отклонения заявки недействительна. Открой заявку заново.", _admin_panel_keyboard())
+                return
+            if app_id <= 0:
+                VK_STATES.pop(str(user_id), None)
+                await _answer(message, "❌ Некорректный ID заявки.", _admin_panel_keyboard())
+                return
             app = await get_application(app_id)
-            VK_STATES.pop(str(user_id), None)
-            if app and await set_status(app_id, "rejected", reason):
-                if app["platform"] == "vk":
-                    await _send_vk(int(app["user_id"]), f"❌ Заявка #{app_id} отклонена.\nПричина: {reason}", main_keyboard)
-                await _answer(message, f"❌ Заявка #{app_id} отклонена.", _admin_panel_keyboard())
-            else:
+            if not app:
+                VK_STATES.pop(str(user_id), None)
+                await _answer(message, "❌ Заявка не найдена.", _admin_panel_keyboard())
+                return
+            if app["status"] != "pending":
+                VK_STATES.pop(str(user_id), None)
+                await _answer(message, f"ℹ️ Заявка уже обработана: {app['status']}.", _admin_panel_keyboard())
+                return
+            if not await set_status(app_id, "rejected", reason):
+                VK_STATES.pop(str(user_id), None)
                 await _answer(message, "ℹ️ Заявка уже обработана или не найдена.", _admin_panel_keyboard())
+                return
+            VK_STATES.pop(str(user_id), None)
+            notification_failed = False
+            if app["platform"] == "vk":
+                try:
+                    await _send_vk(
+                        int(app["user_id"]),
+                        f"❌ Заявка #{app_id} отклонена.\nПричина: {reason}",
+                        main_keyboard,
+                    )
+                except Exception:
+                    notification_failed = True
+            suffix = "\n⚠️ Уведомление пользователю не доставлено." if notification_failed else ""
+            await _answer(message, f"❌ Заявка #{app_id} отклонена.{suffix}", _admin_panel_keyboard())
             return
 
         if normalized == "📋 правила":
