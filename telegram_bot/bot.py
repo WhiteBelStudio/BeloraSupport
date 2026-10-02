@@ -51,31 +51,55 @@ async def _create_telegram_bot(token: str, proxy: str | None) -> Bot:
 
 
 async def _build_telegram_bot(token: str) -> Bot:
-    """Prefer the configured proxy, but automatically fall back to direct HTTPS."""
+    """Build a Telegram client and keep retrying until Telegram API is reachable."""
     proxy = os.getenv("TELEGRAM_PROXY", "").strip() or None
     fallback_direct = os.getenv("TELEGRAM_PROXY_FALLBACK_DIRECT", "1").strip().lower() not in {
         "0", "false", "no", "off"
     }
+    retry_delay = max(3.0, float(os.getenv("TELEGRAM_CONNECT_RETRY_DELAY", "10")))
 
-    if proxy:
-        logger.info("🌐 Telegram proxy configured; checking connectivity...")
-        try:
-            bot = await _create_telegram_bot(token, proxy)
-        except Exception as exc:
-            if not fallback_direct:
+    while True:
+        if proxy:
+            logger.info("🌐 Telegram proxy configured; checking connectivity...")
+            try:
+                bot = await _create_telegram_bot(token, proxy)
+            except asyncio.CancelledError:
                 raise
+            except Exception as exc:
+                logger.warning(
+                    "⚠️ Telegram proxy is unreachable (%s).",
+                    exc or "connection error",
+                )
+                if not fallback_direct:
+                    logger.info(
+                        "🔁 Telegram proxy retry in %.1fs...",
+                        retry_delay,
+                    )
+                    await asyncio.sleep(retry_delay)
+                    continue
+                logger.warning("↪️ Trying direct HTTPS instead...")
+            else:
+                logger.info("✅ Telegram proxy connectivity check passed")
+                return bot
+
+        logger.info("🌐 Telegram direct HTTPS mode enabled")
+        try:
+            bot = await _create_telegram_bot(token, None)
+        except asyncio.CancelledError:
+            raise
+        except Exception as exc:
             logger.warning(
-                "⚠️ Telegram proxy is unreachable (%s). Falling back to direct HTTPS.",
+                "⚠️ Telegram direct HTTPS is unreachable (%s).",
                 exc or "connection error",
             )
+            logger.warning(
+                "🔁 Telegram connectivity retry in %.1fs...",
+                retry_delay,
+            )
+            await asyncio.sleep(retry_delay)
         else:
-            logger.info("✅ Telegram proxy connectivity check passed")
+            logger.info("✅ Telegram API connectivity check passed")
             return bot
-
-    logger.info("🌐 Telegram direct HTTPS mode enabled")
-    bot = await _create_telegram_bot(token, None)
-    logger.info("✅ Telegram API connectivity check passed")
-    return bot
 
 
 async def run_telegram_bot() -> None:
